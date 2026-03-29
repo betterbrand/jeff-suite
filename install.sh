@@ -8,7 +8,7 @@ set -euo pipefail
 
 INSTALL_DIR="$HOME/jeff-suite"
 REPO_URL="https://github.com/betterbrand/jeff-suite"
-BRANCH="master"
+BRANCH="main"
 
 echo ""
 echo "  Jeff Suite Installer"
