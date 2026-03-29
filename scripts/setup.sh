@@ -118,8 +118,8 @@ echo "[OK] Using public BASE RPC (https://mainnet.base.org)"
 echo "     To use a faster private RPC, edit ETH_NODE_ADDRESS in .env"
 echo ""
 
-# --- Create data directory ---
-mkdir -p "$PROJECT_DIR/data"
+# --- Create data directories ---
+mkdir -p "$PROJECT_DIR/data/data"
 
 # --- Pull Docker image ---
 echo "Pulling proxy-router Docker image (this may take a minute)..."

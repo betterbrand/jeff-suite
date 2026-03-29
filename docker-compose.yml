@@ -9,3 +9,4 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+      - ./.env:/app/.env:ro
