@@ -32,7 +32,17 @@ if [ -z "$MODEL_ID" ]; then
     MAX_RETRIES=12
     while [ $RETRIES -lt $MAX_RETRIES ]; do
         MODELS=$(curl -sf -u "$AUTH_USER:$AUTH_PASS" "$API_URL/blockchain/models" 2>/dev/null || echo "")
-        if [ -n "$MODELS" ] && [ "$MODELS" != "null" ] && [ "$MODELS" != "[]" ]; then
+        # Check if we got a non-empty response with actual models
+        HAS_MODELS=$(echo "$MODELS" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    models = data.get('models', data) if isinstance(data, dict) else data
+    print('yes' if isinstance(models, list) and len(models) > 0 else 'no')
+except:
+    print('no')
+" 2>/dev/null || echo "no")
+        if [ "$HAS_MODELS" = "yes" ]; then
             break
         fi
         RETRIES=$((RETRIES + 1))
@@ -52,28 +62,41 @@ if [ -z "$MODEL_ID" ]; then
         exit 1
     fi
 
-    # Auto-select: glmb5 > any TEE > first available
+    # Auto-select: glm-5 TEE > any TEE with glm > any TEE > glm-5 > first LLM
     MODEL_ID=$(echo "$MODELS" | python3 -c "
 import sys, json
 try:
-    models = json.load(sys.stdin)
+    data = json.load(sys.stdin)
+    models = data.get('models', data) if isinstance(data, dict) else data
     if not isinstance(models, list):
-        models = models.get('data', models.get('models', []))
-    # Try glmb5
-    for m in models:
-        name = (m.get('Name') or m.get('name') or '').lower()
-        if 'glmb5' in name:
+        models = []
+    # Filter to LLMs only
+    llms = [m for m in models if (m.get('ModelType') or m.get('modelType') or '') == 'LLM']
+    if not llms:
+        llms = models
+    def tags_lower(m):
+        t = m.get('Tags') or m.get('tags') or []
+        return ','.join(t).lower() if isinstance(t, list) else str(t).lower()
+    def name_lower(m):
+        return (m.get('Name') or m.get('name') or '').lower()
+    # Priority 1: glm-5 with TEE
+    for m in llms:
+        if 'glm' in name_lower(m) and 'tee' in tags_lower(m):
             print(m.get('Id') or m.get('id', '')); sys.exit(0)
-    # Try any TEE
-    for m in models:
-        tags = m.get('Tags') or m.get('tags') or []
-        if isinstance(tags, list):
-            tags = ','.join(tags).lower()
-        if 'tee' in str(tags).lower():
+    # Priority 2: any TEE provider
+    for m in llms:
+        if 'tee' in tags_lower(m) and 'negtest' not in tags_lower(m) and 'fake' not in name_lower(m):
             print(m.get('Id') or m.get('id', '')); sys.exit(0)
-    # First available
-    if models:
-        print(models[0].get('Id') or models[0].get('id', ''))
+    # Priority 3: glm-5 (non-web preferred)
+    for m in llms:
+        if 'glm-5' in name_lower(m) and ':web' not in name_lower(m):
+            print(m.get('Id') or m.get('id', '')); sys.exit(0)
+    for m in llms:
+        if 'glm-5' in name_lower(m):
+            print(m.get('Id') or m.get('id', '')); sys.exit(0)
+    # Priority 4: first LLM
+    if llms:
+        print(llms[0].get('Id') or llms[0].get('id', ''))
 except Exception as e:
     print('', file=sys.stderr)
 " 2>/dev/null || echo "")
@@ -91,47 +114,66 @@ echo "Model ID: $MODEL_ID"
 echo ""
 
 # --- Approve MOR spending ---
+# The Diamond contract address is the spender; approve a large amount
+DIAMOND="0x6aBE1d282f72B474E54527D93b979A4f64d3030a"
 echo "Approving MOR token spending..."
-APPROVE_RESP=$(curl -sf -X POST -u "$AUTH_USER:$AUTH_PASS" \
-    -H "Content-Type: application/json" \
-    "$API_URL/blockchain/approve" 2>/dev/null || echo "")
+APPROVE_RESP=$(curl -s -u "$AUTH_USER:$AUTH_PASS" \
+    -X POST \
+    "$API_URL/blockchain/approve?spender=$DIAMOND&amount=100" 2>/dev/null || echo "")
 
 if [ -n "$APPROVE_RESP" ]; then
     echo "[OK] MOR spending approved"
+    # Wait for the approval tx to confirm
+    echo "  Waiting for approval transaction..."
+    sleep 15
 else
-    echo "[WARN] Approve call returned empty response (may already be approved)"
+    echo "[WARN] Approve returned empty (may already be approved)"
 fi
 
 # --- Open session ---
 echo "Opening session (this sends a blockchain transaction)..."
 
-# Default session duration: 1 hour (3600 seconds)
-SESSION_RESP=$(curl -sf -X POST -u "$AUTH_USER:$AUTH_PASS" \
+# 10 minute session to start with
+SESSION_RESP=$(curl -s -u "$AUTH_USER:$AUTH_PASS" \
+    -X POST \
     -H "Content-Type: application/json" \
-    -d "{\"sessionDuration\": 3600}" \
+    -d '{"sessionDuration": 600}' \
     "$API_URL/blockchain/models/$MODEL_ID/session" 2>/dev/null || echo "")
 
 if [ -z "$SESSION_RESP" ]; then
-    echo "[FAIL] Session creation failed. Check:"
-    echo "  - Wallet has at least 5 MOR (run ./scripts/balance.sh)"
-    echo "  - Wallet has ETH for gas"
-    echo "  - Proxy-router is healthy (run ./scripts/health.sh)"
+    echo "[FAIL] Session creation returned empty response."
+    echo "  Check ./scripts/health.sh and ./scripts/balance.sh"
+    exit 1
+fi
+
+# Check for error in response
+ERROR_MSG=$(echo "$SESSION_RESP" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print(d.get('error', ''))
+except:
+    print('')
+" 2>/dev/null || echo "")
+
+if [ -n "$ERROR_MSG" ]; then
+    echo "[FAIL] $ERROR_MSG"
     exit 1
 fi
 
 # Extract session ID
-if command -v jq &>/dev/null; then
-    SESSION_ID=$(echo "$SESSION_RESP" | jq -r '.sessionId // .SessionId // .session_id // empty' 2>/dev/null || echo "")
-else
-    SESSION_ID=$(echo "$SESSION_RESP" | python3 -c "
+SESSION_ID=$(echo "$SESSION_RESP" | python3 -c "
 import sys, json
-d = json.load(sys.stdin)
-print(d.get('sessionId', d.get('SessionId', d.get('session_id', ''))))" 2>/dev/null || echo "")
-fi
+try:
+    d = json.load(sys.stdin)
+    sid = d.get('sessionId') or d.get('SessionId') or d.get('session_id') or d.get('sessionID') or ''
+    print(sid)
+except:
+    print('')
+" 2>/dev/null || echo "")
 
 if [ -z "$SESSION_ID" ]; then
-    echo "[WARN] Could not extract session ID from response."
-    echo "Full response:"
+    echo "[WARN] Could not extract session ID from response:"
     echo "$SESSION_RESP" | python3 -m json.tool 2>/dev/null || echo "$SESSION_RESP"
     exit 1
 fi

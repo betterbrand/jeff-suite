@@ -26,35 +26,44 @@ if [ -z "$RESPONSE" ]; then
     exit 1
 fi
 
-# Pretty-print and highlight TEE providers
-if command -v jq &>/dev/null; then
-    MODEL_COUNT=$(echo "$RESPONSE" | jq 'if type == "array" then length else 0 end')
-    echo "Found $MODEL_COUNT model(s):"
-    echo ""
-    echo "$RESPONSE" | jq -r '
-        if type == "array" then
-            .[] | "  ID:       \(.Id // .id // "unknown")\n  Name:     \(.Name // .name // "unknown")\n  Provider: \(.Owner // .owner // "unknown")\n  Fee:      \(.Fee // .fee // "unknown")\n  Tags:     \(.Tags // .tags // [] | join(", "))\n"
-        else
-            . | tostring
-        end
-    '
-    echo ""
-    echo "--- TEE Providers ---"
-    TEE_MODELS=$(echo "$RESPONSE" | jq '[.[] | select((.Tags // .tags // [] | join(",") | ascii_downcase) | contains("tee"))]')
-    TEE_COUNT=$(echo "$TEE_MODELS" | jq 'length')
-    if [ "$TEE_COUNT" -gt 0 ]; then
-        echo "Found $TEE_COUNT TEE provider(s):"
-        echo "$TEE_MODELS" | jq -r '.[] | "  [TEE] \(.Id // .id) -- \(.Name // .name // "unknown")"'
-    else
-        echo "No TEE-tagged models found in current listing."
-        echo "TEE providers may still be available -- check the full list above."
-    fi
-else
-    # Fallback: python pretty-print
-    echo "$RESPONSE" | python3 -m json.tool
-fi
+echo "$RESPONSE" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+models = data.get('models', data) if isinstance(data, dict) else data
+if not isinstance(models, list):
+    print('Unexpected response format'); sys.exit(1)
 
-echo ""
+llms = [m for m in models if (m.get('ModelType') or '') == 'LLM']
+others = [m for m in models if (m.get('ModelType') or '') != 'LLM']
+
+print(f'Found {len(llms)} LLM model(s):')
+print()
+for m in llms:
+    tags = ', '.join(m.get('Tags') or [])
+    tee = ' [TEE]' if 'TEE' in (m.get('Tags') or []) else ''
+    print(f'  {m[\"Name\"]}{tee}')
+    print(f'    ID:   {m[\"Id\"]}')
+    print(f'    Tags: {tags}')
+    print()
+
+tee_models = [m for m in llms if 'TEE' in (m.get('Tags') or [])]
+if tee_models:
+    print('--- TEE Providers ---')
+    for m in tee_models:
+        print(f'  [TEE] {m[\"Name\"]} -> {m[\"Id\"]}')
+    print()
+
+glm = [m for m in llms if 'glm' in (m.get('Name') or '').lower()]
+if glm:
+    print('--- GLM Models ---')
+    for m in glm:
+        print(f'  {m[\"Name\"]} -> {m[\"Id\"]}')
+    print()
+
+if others:
+    print(f'Also found {len(others)} non-LLM model(s) (embedding, STT, TTS)')
+    print()
+"
+
 echo "To open a session: ./scripts/open-session.sh <MODEL_ID>"
-echo "Look for TEE providers -- glmb5 if available."
 echo ""
