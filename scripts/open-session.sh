@@ -23,7 +23,7 @@ echo ""
 MODEL_ID="${1:-}"
 
 if [ -z "$MODEL_ID" ]; then
-    echo "Searching for TEE providers (glmb5 preferred)..."
+    echo "Looking for available models..."
     echo ""
 
     # Wait for the proxy-router API to be ready and return models
