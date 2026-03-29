@@ -23,25 +23,60 @@ echo ""
 MODEL_ID="${1:-}"
 
 if [ -z "$MODEL_ID" ]; then
-    echo "No model ID provided. Searching for TEE providers (glmb5 preferred)..."
+    echo "Searching for TEE providers (glmb5 preferred)..."
     echo ""
 
-    MODELS=$(curl -sf -u "$AUTH_USER:$AUTH_PASS" "$API_URL/blockchain/models" 2>/dev/null)
+    # Wait for the proxy-router API to be ready and return models
+    MODELS=""
+    RETRIES=0
+    MAX_RETRIES=12
+    while [ $RETRIES -lt $MAX_RETRIES ]; do
+        MODELS=$(curl -sf -u "$AUTH_USER:$AUTH_PASS" "$API_URL/blockchain/models" 2>/dev/null || echo "")
+        if [ -n "$MODELS" ] && [ "$MODELS" != "null" ] && [ "$MODELS" != "[]" ]; then
+            break
+        fi
+        RETRIES=$((RETRIES + 1))
+        if [ $RETRIES -eq 1 ]; then
+            echo "  Waiting for the node to sync with the blockchain..."
+        fi
+        echo "  Checking for models... (attempt $RETRIES/$MAX_RETRIES)"
+        sleep 10
+    done
 
-    if [ -z "$MODELS" ]; then
-        echo "[FAIL] Could not fetch models. Is the proxy-router running?"
+    if [ -z "$MODELS" ] || [ "$MODELS" = "null" ] || [ "$MODELS" = "[]" ]; then
+        echo "[FAIL] No models found after ${MAX_RETRIES} attempts."
+        echo ""
+        echo "  The node may still be syncing. Try again in a minute:"
+        echo "    ./scripts/list-models.sh"
+        echo "    ./scripts/open-session.sh"
         exit 1
     fi
 
-    if command -v jq &>/dev/null; then
-        # Try glmb5 first, then any TEE, then first available
-        MODEL_ID=$(echo "$MODELS" | jq -r '
-            ([ .[] | select((.Name // .name // "" | ascii_downcase) | contains("glmb5")) ] | first // null) //
-            ([ .[] | select((.Tags // .tags // [] | join(",") | ascii_downcase) | contains("tee")) ] | first // null) //
-            (first // null)
-            | .Id // .id // empty
-        ' 2>/dev/null || echo "")
-    fi
+    # Auto-select: glmb5 > any TEE > first available
+    MODEL_ID=$(echo "$MODELS" | python3 -c "
+import sys, json
+try:
+    models = json.load(sys.stdin)
+    if not isinstance(models, list):
+        models = models.get('data', models.get('models', []))
+    # Try glmb5
+    for m in models:
+        name = (m.get('Name') or m.get('name') or '').lower()
+        if 'glmb5' in name:
+            print(m.get('Id') or m.get('id', '')); sys.exit(0)
+    # Try any TEE
+    for m in models:
+        tags = m.get('Tags') or m.get('tags') or []
+        if isinstance(tags, list):
+            tags = ','.join(tags).lower()
+        if 'tee' in str(tags).lower():
+            print(m.get('Id') or m.get('id', '')); sys.exit(0)
+    # First available
+    if models:
+        print(models[0].get('Id') or models[0].get('id', ''))
+except Exception as e:
+    print('', file=sys.stderr)
+" 2>/dev/null || echo "")
 
     if [ -z "$MODEL_ID" ]; then
         echo "Could not auto-select a model. Run ./scripts/list-models.sh and pass the ID:"
