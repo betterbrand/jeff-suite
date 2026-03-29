@@ -1,6 +1,6 @@
 # Jeff Suite
 
-Dead-simple consumer onboarding for the Morpheus Lumerin Node. Run the proxy-router in Docker, chat with decentralized AI models (TEE providers, glmb5 preferred) via MorpheusUI or CLI scripts.
+Dead-simple consumer onboarding for the Morpheus Lumerin Node. Run the proxy-router in Docker, chat with decentralized AI models (TEE providers, glm-5 preferred) via MorpheusUI or CLI scripts.
 
 ## File Inventory
 
@@ -13,7 +13,7 @@ Dead-simple consumer onboarding for the Morpheus Lumerin Node. Run the proxy-rou
 | `scripts/balance.sh` | Checks MOR + ETH balances |
 | `scripts/health.sh` | Checks proxy-router health |
 | `scripts/list-models.sh` | Lists marketplace models, flags TEE providers |
-| `scripts/open-session.sh` | Approves MOR + opens session (prefers TEE/glmb5) |
+| `scripts/open-session.sh` | Approves MOR + opens session (prefers TEE/glm-5) |
 | `scripts/chat.sh` | Sends a prompt to an active session |
 | `scripts/teardown.sh` | Closes session, stops containers |
 

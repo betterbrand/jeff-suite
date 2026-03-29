@@ -1,6 +1,6 @@
 # Jeff Suite
 
-Run the Morpheus Lumerin Node as a consumer and chat with decentralized AI models offering TEE (Trusted Execution Environment) verification. Target model: glmb5 (or whatever TEE provider is available on the marketplace).
+Run the Morpheus Lumerin Node as a consumer and chat with decentralized AI models offering TEE (Trusted Execution Environment) verification. Target model: glm-5 (or whatever TEE provider is available on the marketplace).
 
 ## Install
 
@@ -54,7 +54,7 @@ Run it again until your funds show up (BASE confirms in a few seconds).
 # Browse available models
 ~/jeff-suite/scripts/list-models.sh
 
-# Open a session (auto-selects TEE provider, prefers glmb5)
+# Open a session (auto-selects TEE provider, prefers glm-5)
 ~/jeff-suite/scripts/open-session.sh
 
 # Chat
@@ -89,7 +89,7 @@ MorpheusUI connects to the proxy-router at `http://localhost:8082`.
 | `balance.sh` | Checks MOR + ETH balance on your wallet |
 | `health.sh` | Verifies proxy-router is running and responding |
 | `list-models.sh` | Lists all models on the Morpheus marketplace, flags TEE providers |
-| `open-session.sh` | Opens a chat session (auto-selects TEE/glmb5, or pass a model ID) |
+| `open-session.sh` | Opens a chat session (auto-selects TEE/glm-5, or pass a model ID) |
 | `chat.sh` | Sends a message and prints the response |
 | `teardown.sh` | Closes session (refunds unused MOR) and stops containers |
 
