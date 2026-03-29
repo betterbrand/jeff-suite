@@ -142,9 +142,9 @@ if [ -f "$WALLET_ADDR_FILE" ]; then
     echo ""
     echo "      $ADDR"
     echo ""
-    echo "  Send 5 MOR and a tiny bit of ETH to that address on BASE."
+    echo "  Send 5 MOR and 0.001 ETH to that address on BASE."
     echo ""
-    echo "  Send 5 MOR and a tiny bit of ETH to that address on BASE."
+    echo "  Send 5 MOR and 0.001 ETH to that address on BASE."
     echo "  When you've sent it, press Enter and we'll check for it."
     echo ""
 
