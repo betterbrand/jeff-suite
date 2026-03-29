@@ -113,24 +113,9 @@ else
     echo "[OK] Created .env from template"
 fi
 
-echo ""
-echo "RPC Endpoint Configuration"
-echo "--------------------------"
-echo "The proxy-router needs a BASE mainnet RPC URL."
-echo "Get a free one from Alchemy (https://dashboard.alchemy.com) or Infura."
-echo "Press Enter to use the default public endpoint (rate-limited)."
-echo ""
-read -r -p "BASE RPC URL [https://mainnet.base.org]: " RPC_URL
-RPC_URL="${RPC_URL:-https://mainnet.base.org}"
-
-# Write RPC URL to .env
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s|^ETH_NODE_ADDRESS=.*|ETH_NODE_ADDRESS=$RPC_URL|" "$PROJECT_DIR/.env"
-else
-    sed -i "s|^ETH_NODE_ADDRESS=.*|ETH_NODE_ADDRESS=$RPC_URL|" "$PROJECT_DIR/.env"
-fi
 chmod 600 "$PROJECT_DIR/.env"
-echo "[OK] RPC URL set"
+echo "[OK] Using public BASE RPC (https://mainnet.base.org)"
+echo "     To use a faster private RPC, edit ETH_NODE_ADDRESS in .env"
 echo ""
 
 # --- Create data directory ---
