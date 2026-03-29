@@ -127,19 +127,73 @@ docker pull ghcr.io/morpheusais/morpheus-lumerin-node:latest
 echo "[OK] Image pulled"
 echo ""
 
-# --- Summary ---
-echo "==========================================="
-echo "  Setup Complete"
-echo "==========================================="
-if [ -f "$WALLET_ADDR_FILE" ]; then
-    echo ""
-    echo "  Wallet: $(cat "$WALLET_ADDR_FILE")"
-    echo ""
-    echo "  Next steps:"
-    echo "    1. Send MOR + ETH (on BASE) to the wallet address above"
-    echo "       Minimum: 5 MOR + 0.001 ETH"
-    echo "    2. Run: ./scripts/balance.sh   (check when funds arrive)"
-    echo "    3. Run: ./scripts/start.sh     (start the proxy-router)"
-    echo "    4. Run: ./scripts/health.sh    (verify it's running)"
-fi
+# --- Start the node ---
+echo "Starting Morpheus node..."
+"$SCRIPT_DIR/start.sh"
+
+# --- Wait for funding ---
 echo ""
+echo ""
+if [ -f "$WALLET_ADDR_FILE" ]; then
+    ADDR=$(cat "$WALLET_ADDR_FILE")
+    echo "  Morpheus is running."
+    echo ""
+    echo "  Your wallet address (BASE network):"
+    echo ""
+    echo "      $ADDR"
+    echo ""
+    echo "  Send 5 MOR and a tiny bit of ETH to that address on BASE."
+    echo ""
+    echo "  Send 5 MOR and a tiny bit of ETH to that address on BASE."
+    echo "  When you've sent it, press Enter and we'll check for it."
+    echo ""
+
+    read -r -p "  Press Enter once you've sent the funds... " < /dev/tty || true
+    echo ""
+    echo "  Checking balance..."
+
+    # Poll every 10 seconds until funded
+    while true; do
+        RPC_URL=$(grep '^ETH_NODE_ADDRESS=' "$PROJECT_DIR/.env" | cut -d= -f2)
+        MOR_TOKEN="0x7431aDa8a591C955a994a21710752EF9b882b8e3"
+        ADDR_CLEAN="${ADDR#0x}"
+        ADDR_PADDED=$(printf '%064s' "$ADDR_CLEAN" | tr ' ' '0')
+        CALL_DATA="0x70a08231${ADDR_PADDED}"
+
+        ETH_HEX=$(curl -sf -X POST "$RPC_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$ADDR\",\"latest\"],\"id\":1}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
+
+        MOR_HEX=$(curl -sf -X POST "$RPC_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"$MOR_TOKEN\",\"data\":\"$CALL_DATA\"},\"latest\"],\"id\":2}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
+
+        ETH_DISPLAY=$(python3 -c "print(f'{int(\"$ETH_HEX\", 16) / 1e18:.6f}')")
+        MOR_DISPLAY=$(python3 -c "print(f'{int(\"$MOR_HEX\", 16) / 1e18:.4f}')")
+
+        ETH_OK=$(python3 -c "print('yes' if int('$ETH_HEX', 16) > 0 else 'no')")
+        MOR_OK=$(python3 -c "print('yes' if int('$MOR_HEX', 16) >= int(5e18) else 'no')")
+
+        if [ "$ETH_OK" = "yes" ] && [ "$MOR_OK" = "yes" ]; then
+            echo "  ETH: $ETH_DISPLAY  |  MOR: $MOR_DISPLAY"
+            echo ""
+            echo "  Funds received. Let's go."
+            break
+        else
+            echo "  ETH: $ETH_DISPLAY  |  MOR: $MOR_DISPLAY  -- waiting for confirmation..."
+            sleep 10
+        fi
+    done
+
+    # --- Open session and first chat ---
+    echo ""
+    "$SCRIPT_DIR/open-session.sh"
+    echo ""
+    echo "  You're connected. Try it:"
+    echo ""
+    echo "      cd ~/jeff-suite"
+    echo "      ./scripts/chat.sh \"hello\""
+    echo ""
+fi
