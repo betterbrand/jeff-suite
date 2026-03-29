@@ -1,0 +1,11 @@
+services:
+  proxy-router:
+    image: ghcr.io/morpheusais/morpheus-lumerin-node:latest
+    restart: unless-stopped
+    ports:
+      - "3333:3333"
+      - "8082:8082"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data

@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+WALLET_ADDR_FILE="$PROJECT_DIR/data/.wallet-address"
+MOR_TOKEN="0x7431aDa8a591C955a994a21710752EF9b882b8e3"
+
+# --- Load config ---
+if [ ! -f "$PROJECT_DIR/.env" ]; then
+    echo "[FAIL] No .env found. Run ./scripts/setup.sh first."
+    exit 1
+fi
+
+if [ ! -f "$WALLET_ADDR_FILE" ]; then
+    echo "[FAIL] No wallet address found. Run ./scripts/setup.sh first."
+    exit 1
+fi
+
+RPC_URL=$(grep '^ETH_NODE_ADDRESS=' "$PROJECT_DIR/.env" | cut -d= -f2)
+WALLET=$(cat "$WALLET_ADDR_FILE")
+
+echo "=== Wallet Balance Check ==="
+echo "  Address: $WALLET"
+echo "  RPC:     $RPC_URL"
+echo ""
+
+# --- Check ETH balance ---
+ETH_HEX=$(curl -sf -X POST "$RPC_URL" \
+    -H "Content-Type: application/json" \
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$WALLET\",\"latest\"],\"id\":1}" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))")
+
+ETH_WEI=$(python3 -c "print(int('$ETH_HEX', 16))")
+ETH_DISPLAY=$(python3 -c "print(f'{int(\"$ETH_HEX\", 16) / 1e18:.6f}')")
+
+# --- Check MOR balance (ERC-20 balanceOf) ---
+# balanceOf(address) selector = 0x70a08231
+# pad address to 32 bytes
+ADDR_CLEAN="${WALLET#0x}"
+ADDR_PADDED=$(printf '%064s' "$ADDR_CLEAN" | tr ' ' '0')
+CALL_DATA="0x70a08231${ADDR_PADDED}"
+
+MOR_HEX=$(curl -sf -X POST "$RPC_URL" \
+    -H "Content-Type: application/json" \
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"$MOR_TOKEN\",\"data\":\"$CALL_DATA\"},\"latest\"],\"id\":2}" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))")
+
+MOR_DISPLAY=$(python3 -c "print(f'{int(\"$MOR_HEX\", 16) / 1e18:.4f}')")
+
+echo "  ETH: $ETH_DISPLAY"
+echo "  MOR: $MOR_DISPLAY"
+echo ""
+
+# --- Readiness check ---
+ETH_OK=$(python3 -c "print('yes' if int('$ETH_HEX', 16) > 0 else 'no')")
+MOR_OK=$(python3 -c "print('yes' if int('$MOR_HEX', 16) >= int(5e18) else 'no')")
+
+if [ "$ETH_OK" = "yes" ] && [ "$MOR_OK" = "yes" ]; then
+    echo "  [OK] Wallet funded. Ready to go."
+    echo "  Next: ./scripts/start.sh"
+else
+    echo "  [WAITING] Wallet needs funding:"
+    [ "$ETH_OK" = "no" ] && echo "    - Send ETH (BASE) for gas (~0.001 ETH minimum)"
+    [ "$MOR_OK" = "no" ] && echo "    - Send at least 5 MOR (BASE) for session deposits"
+    echo ""
+    echo "  Run this script again to recheck."
+fi
+echo ""
