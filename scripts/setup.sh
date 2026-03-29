@@ -110,12 +110,18 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     echo "Existing .env found. Keeping it."
 else
     cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
-    echo "[OK] Created .env from template"
+    # Set RPC endpoint
+    _RPC="https://base-mainnet.g.alchemy.com/v2/KYvFy-hLFPK0JOTvzNclA"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s|^ETH_NODE_ADDRESS=.*|ETH_NODE_ADDRESS=$_RPC|" "$PROJECT_DIR/.env"
+    else
+        sed -i "s|^ETH_NODE_ADDRESS=.*|ETH_NODE_ADDRESS=$_RPC|" "$PROJECT_DIR/.env"
+    fi
+    unset _RPC
+    echo "[OK] Configuration ready"
 fi
 
 chmod 600 "$PROJECT_DIR/.env"
-echo "[OK] Using public BASE RPC (https://mainnet.base.org)"
-echo "     To use a faster private RPC, edit ETH_NODE_ADDRESS in .env"
 echo ""
 
 # --- Create data directories ---
