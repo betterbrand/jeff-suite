@@ -8,7 +8,7 @@ set -euo pipefail
 
 INSTALL_DIR="$HOME/jeff-suite"
 REPO_URL="https://github.com/betterbrand/jeff-suite"
-BRANCH="main"
+BRANCH="master"
 
 echo ""
 echo "  Jeff Suite Installer"
@@ -46,21 +46,13 @@ fi
 
 echo "Downloading Jeff Suite..."
 
-if command -v git &>/dev/null; then
-    git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$INSTALL_DIR" 2>/dev/null || {
-        echo "Git clone failed. Trying zip download..."
-        FALLBACK=true
-    }
-fi
+TMP_ZIP=$(mktemp /tmp/jeff-suite-XXXXXX.zip)
+TMP_DIR=$(mktemp -d /tmp/jeff-suite-extract-XXXXXX)
 
-if [ ! -d "$INSTALL_DIR" ] || [ "${FALLBACK:-}" = "true" ]; then
-    rm -rf "$INSTALL_DIR"
-    TMP_ZIP=$(mktemp /tmp/jeff-suite-XXXXXX.zip)
-    curl -fsSL "$REPO_URL/archive/refs/heads/$BRANCH.zip" -o "$TMP_ZIP"
-    unzip -q "$TMP_ZIP" -d /tmp
-    mv "/tmp/jeff-suite-$BRANCH" "$INSTALL_DIR"
-    rm -f "$TMP_ZIP"
-fi
+curl -fsSL "$REPO_URL/archive/refs/heads/$BRANCH.zip" -o "$TMP_ZIP"
+unzip -q "$TMP_ZIP" -d "$TMP_DIR"
+mv "$TMP_DIR/jeff-suite-$BRANCH" "$INSTALL_DIR"
+rm -rf "$TMP_ZIP" "$TMP_DIR"
 
 chmod +x "$INSTALL_DIR"/scripts/*.sh
 
