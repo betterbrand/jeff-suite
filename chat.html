@@ -457,7 +457,7 @@
     margin: 8px 0 20px;
   }
 
-  #sb-close-btn {
+  #sb-switch-btn, #sb-close-btn {
     width: 100%;
     padding: 9px 14px;
     background: transparent;
@@ -470,6 +470,7 @@
     transition: all 0.2s;
   }
 
+  #sb-switch-btn:hover { border-color: var(--accent); color: var(--accent); }
   #sb-close-btn:hover { border-color: #c44; color: #c44; }
 
   /* Setup screen logo mark */
@@ -598,7 +599,8 @@
       </div>
 
       <div id="sb-close-section" class="sb-section hidden">
-        <button id="sb-close-btn" onclick="closeSession()">Close Session (Refund MOR)</button>
+        <button id="sb-switch-btn" onclick="switchModel()">Switch Model</button>
+        <button id="sb-close-btn" onclick="closeSession()" style="margin-top: 6px;">Close Session (Refund MOR)</button>
       </div>
     </div>
     <div id="sidebar-footer">
@@ -661,6 +663,31 @@ async function loadModels() {
   return llms;
 }
 
+function saveChatHistory() {
+  try {
+    localStorage.setItem('morpheus-chat-history', JSON.stringify(chatHistory));
+  } catch {}
+}
+
+function loadChatHistory() {
+  try {
+    const saved = localStorage.getItem('morpheus-chat-history');
+    if (saved) {
+      chatHistory = JSON.parse(saved);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+function restoreMessages() {
+  const msgContainer = document.getElementById('messages');
+  msgContainer.innerHTML = '';
+  chatHistory.forEach(msg => {
+    addMsg(msg.role, msg.content);
+  });
+}
+
 function enterChat(model, sid) {
   sessionId = sid;
   selectedModel = model;
@@ -673,8 +700,46 @@ function enterChat(model, sid) {
 
   document.getElementById('header-model').textContent = modelName;
   populateSidebar(model, sid);
+
+  // Restore previous chat if available
+  if (loadChatHistory() && chatHistory.length > 0) {
+    restoreMessages();
+    addMsg('system', 'Resumed on ' + modelName + '.');
+  } else {
+    addMsg('system', 'Connected to ' + modelName + '.');
+  }
+
   document.getElementById('prompt').focus();
-  addMsg('system', 'Connected to ' + modelName + '.');
+}
+
+async function switchModel() {
+  // Close current session
+  if (sessionId) {
+    try {
+      await apiFetch('/blockchain/sessions/' + sessionId + '/close', { method: 'POST' });
+    } catch {}
+  }
+  if (timerInterval) clearInterval(timerInterval);
+  sessionId = null;
+
+  // Save chat history
+  saveChatHistory();
+
+  // Show setup screen with model picker
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('setup').style.display = 'flex';
+
+  // Reset setup UI
+  document.getElementById('setup-status').textContent = 'Loading models...';
+  document.getElementById('setup-status').className = '';
+  document.getElementById('model-select').classList.add('hidden');
+  document.getElementById('connect-btn').classList.add('hidden');
+  document.getElementById('connect-btn').textContent = 'Open Session';
+  document.getElementById('connect-btn').disabled = false;
+
+  // Reload models
+  init();
 }
 
 async function checkExistingSessions(models) {
@@ -975,6 +1040,7 @@ async function send() {
   input.style.height = 'auto';
   addMsg('user', text);
   chatHistory.push({ role: 'user', content: text });
+  saveChatHistory();
   sending = true;
   document.getElementById('send').disabled = true;
 
@@ -1034,6 +1100,7 @@ async function send() {
     }
 
     chatHistory.push({ role: 'assistant', content: fullReply });
+    saveChatHistory();
   } catch (e) {
     replyBody.textContent = 'Connection lost: ' + e.message;
     replyBody.style.color = '#c44';
