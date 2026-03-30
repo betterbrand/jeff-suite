@@ -173,12 +173,8 @@ if [ -f "$WALLET_ADDR_FILE" ]; then
     echo "      $ADDR"
     echo ""
     echo "  Send 5 MOR and 0.001 ETH to that address on BASE."
-    echo "  When you've sent it, press Enter and we'll check for it."
     echo ""
-
-    read -r -p "  Press Enter once you've sent the funds... " < /dev/tty || true
-    echo ""
-    echo "  Checking balance..."
+    echo "  Waiting for funds to arrive..."
 
     # Poll every 10 seconds until funded
     while true; do
