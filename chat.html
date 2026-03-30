@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Morpheus Chat</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif;
+    background: #0a0a0a;
+    color: #e0e0e0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 16px 24px;
+    border-bottom: 1px solid #1a1a1a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  header h1 {
+    font-size: 16px;
+    font-weight: 500;
+    color: #fff;
+    letter-spacing: 0.5px;
+  }
+  #status {
+    font-size: 12px;
+    color: #666;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #status .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #333;
+  }
+  #status.connected .dot { background: #34c759; }
+  #status.error .dot { background: #ff3b30; }
+  #model-info {
+    font-size: 11px;
+    color: #555;
+    padding: 8px 24px;
+    border-bottom: 1px solid #111;
+    flex-shrink: 0;
+  }
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .msg {
+    max-width: 720px;
+    width: 100%;
+    margin: 0 auto;
+    line-height: 1.6;
+    font-size: 14px;
+  }
+  .msg.user {
+    background: #1a1a2e;
+    padding: 12px 16px;
+    border-radius: 12px;
+    align-self: flex-end;
+    color: #c8c8ff;
+  }
+  .msg.assistant {
+    padding: 4px 0;
+    color: #d0d0d0;
+  }
+  .msg.system {
+    color: #555;
+    font-size: 12px;
+    text-align: center;
+    padding: 8px;
+  }
+  #input-area {
+    padding: 16px 24px 24px;
+    border-top: 1px solid #1a1a1a;
+    flex-shrink: 0;
+  }
+  #input-wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    gap: 8px;
+  }
+  #prompt {
+    flex: 1;
+    background: #141414;
+    border: 1px solid #252525;
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: #e0e0e0;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+    min-height: 44px;
+    max-height: 120px;
+  }
+  #prompt:focus { border-color: #3a3a5c; }
+  #prompt::placeholder { color: #444; }
+  #send {
+    background: #2a2a4a;
+    border: none;
+    border-radius: 10px;
+    color: #aaa;
+    padding: 0 18px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  #send:hover { background: #3a3a6a; color: #fff; }
+  #send:disabled { opacity: 0.3; cursor: default; }
+  #setup {
+    max-width: 480px;
+    margin: auto;
+    padding: 40px 24px;
+    text-align: center;
+  }
+  #setup h2 { font-size: 20px; font-weight: 500; margin-bottom: 24px; }
+  #setup p { color: #888; font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
+  #setup select, #setup button {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    margin-bottom: 12px;
+  }
+  #setup select {
+    background: #141414;
+    border: 1px solid #252525;
+    color: #e0e0e0;
+    appearance: none;
+    cursor: pointer;
+  }
+  #setup button {
+    background: #2a2a4a;
+    border: none;
+    color: #ccc;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  #setup button:hover { background: #3a3a6a; color: #fff; }
+  #setup button:disabled { opacity: 0.3; }
+  .tee-badge {
+    display: inline-block;
+    background: #1a3a1a;
+    color: #34c759;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+
+<div id="setup">
+  <h2>Morpheus Chat</h2>
+  <p id="setup-status">Connecting to proxy-router...</p>
+  <select id="model-select" style="display:none"></select>
+  <button id="connect-btn" style="display:none" onclick="openSession()">Open Session</button>
+</div>
+
+<div id="chat" style="display:none">
+  <header>
+    <h1>Morpheus</h1>
+    <div id="status"><span class="dot"></span><span id="status-text">connected</span></div>
+  </header>
+  <div id="model-info"></div>
+  <div id="messages"></div>
+  <div id="input-area">
+    <div id="input-wrap">
+      <textarea id="prompt" rows="1" placeholder="Send a message..." onkeydown="handleKey(event)"></textarea>
+      <button id="send" onclick="send()">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8082';
+const AUTH = 'Basic ' + btoa('admin:morpheus');
+let sessionId = null;
+let modelName = '';
+let sending = false;
+
+async function apiFetch(path, opts = {}) {
+  const headers = { 'Authorization': AUTH, ...opts.headers };
+  const resp = await fetch(API + path, { ...opts, headers });
+  return resp.json();
+}
+
+async function init() {
+  const status = document.getElementById('setup-status');
+  try {
+    const data = await apiFetch('/blockchain/models');
+    const models = data.models || data || [];
+    const llms = models.filter(m => (m.ModelType || m.modelType) === 'LLM');
+    if (!llms.length) {
+      status.textContent = 'No models available. Node may still be syncing...';
+      setTimeout(init, 5000);
+      return;
+    }
+    const select = document.getElementById('model-select');
+    select.innerHTML = '';
+
+    // Sort: TEE first, then GLM, then rest
+    llms.sort((a, b) => {
+      const aT = (a.Tags || []).join(',').toLowerCase();
+      const bT = (b.Tags || []).join(',').toLowerCase();
+      const aTee = aT.includes('tee') ? 0 : 1;
+      const bTee = bT.includes('tee') ? 0 : 1;
+      if (aTee !== bTee) return aTee - bTee;
+      const aGlm = (a.Name || '').toLowerCase().includes('glm') ? 0 : 1;
+      const bGlm = (b.Name || '').toLowerCase().includes('glm') ? 0 : 1;
+      return aGlm - bGlm;
+    });
+
+    llms.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.Id || m.id;
+      const tags = (m.Tags || []).join(',').toLowerCase();
+      const tee = tags.includes('tee') ? ' [TEE]' : '';
+      const fake = (m.Name || '').toLowerCase().includes('fake') || tags.includes('negtest');
+      if (fake) return;
+      opt.textContent = m.Name + tee;
+      opt.dataset.name = m.Name;
+      select.appendChild(opt);
+    });
+
+    status.textContent = 'Select a model to start chatting:';
+    select.style.display = 'block';
+    document.getElementById('connect-btn').style.display = 'block';
+  } catch (e) {
+    status.textContent = 'Cannot reach proxy-router. Is it running?';
+    setTimeout(init, 3000);
+  }
+}
+
+async function openSession() {
+  const btn = document.getElementById('connect-btn');
+  const select = document.getElementById('model-select');
+  const modelId = select.value;
+  modelName = select.selectedOptions[0].dataset.name;
+  btn.disabled = true;
+  btn.textContent = 'Approving MOR...';
+
+  try {
+    const diamond = '0x6aBE1d282f72B474E54527D93b979A4f64d3030a';
+    await apiFetch('/blockchain/approve?spender=' + diamond + '&amount=100', { method: 'POST' });
+
+    btn.textContent = 'Opening session...';
+    const resp = await apiFetch('/blockchain/models/' + modelId + '/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionDuration: 600 })
+    });
+
+    if (resp.error) throw new Error(resp.error);
+    sessionId = resp.sessionId || resp.SessionId || resp.session_id || resp.sessionID;
+    if (!sessionId) throw new Error('No session ID in response');
+
+    document.getElementById('setup').style.display = 'none';
+    document.getElementById('chat').style.display = 'flex';
+    document.getElementById('status').className = 'connected';
+    document.getElementById('model-info').textContent = modelName + ' \u00b7 session: ' + sessionId.slice(0, 16) + '...';
+    document.getElementById('prompt').focus();
+    addMsg('system', 'Connected to ' + modelName + '. Session open for 10 minutes.');
+  } catch (e) {
+    btn.textContent = 'Open Session';
+    btn.disabled = false;
+    document.getElementById('setup-status').textContent = 'Error: ' + e.message;
+  }
+}
+
+function addMsg(role, text) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = text;
+  document.getElementById('messages').appendChild(div);
+  div.scrollIntoView({ behavior: 'smooth' });
+  return div;
+}
+
+async function send() {
+  if (sending) return;
+  const input = document.getElementById('prompt');
+  const text = input.value.trim();
+  if (!text || !sessionId) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  addMsg('user', text);
+  sending = true;
+  document.getElementById('send').disabled = true;
+
+  const reply = addMsg('assistant', '');
+
+  try {
+    const resp = await fetch(API + '/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': AUTH,
+        'Content-Type': 'application/json',
+        'session_id': sessionId
+      },
+      body: JSON.stringify({
+        model: 'auto',
+        messages: [{ role: 'user', content: text }],
+        stream: true
+      })
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      const lines = buf.split('\n');
+      buf = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+        try {
+          const chunk = JSON.parse(data);
+          const delta = chunk.choices?.[0]?.delta?.content;
+          if (delta) reply.textContent += delta;
+        } catch {}
+      }
+      reply.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    if (!reply.textContent) {
+      try {
+        const json = JSON.parse(decoder.decode());
+        reply.textContent = json.choices?.[0]?.message?.content || JSON.stringify(json);
+      } catch {}
+    }
+  } catch (e) {
+    reply.textContent = 'Error: ' + e.message;
+    document.getElementById('status').className = 'error';
+    document.getElementById('status-text').textContent = 'disconnected';
+  }
+
+  sending = false;
+  document.getElementById('send').disabled = false;
+  input.focus();
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+}
+
+document.getElementById('prompt').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+init();
+</script>
+</body>
+</html>
