@@ -9,6 +9,18 @@ KEYCHAIN_SERVICE="morpheus-consumer-wallet"
 KEYCHAIN_ACCOUNT="jeff-suite"
 WALLET_ADDR_FILE="$PROJECT_DIR/data/.wallet-address"
 
+# Source RPC fallback
+. "$SCRIPT_DIR/rpc-check.sh"
+
+# Parse arguments
+USER_RPC=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --rpc) USER_RPC="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
 echo "=== Jeff Suite Setup ==="
 echo ""
 
@@ -110,14 +122,36 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     echo "Existing .env found. Keeping it."
 else
     cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
-    # Set RPC endpoint
-    _RPC="https://base-mainnet.g.alchemy.com/v2/KYvFy-hLFPK0JOTvzNclA"
+    # Set RPC endpoint: user-provided > Alchemy default
+    if [ -n "$USER_RPC" ]; then
+        _RPC="$USER_RPC"
+        echo "[OK] Using provided RPC: $_RPC"
+    else
+        _RPC="https://base-mainnet.g.alchemy.com/v2/KYvFy-hLFPK0JOTvzNclA"
+    fi
     if [[ "$OSTYPE" == "darwin"* ]]; then
         sed -i '' "s|^ETH_NODE_ADDRESS=.*|ETH_NODE_ADDRESS=$_RPC|" "$PROJECT_DIR/.env"
     else
         sed -i "s|^ETH_NODE_ADDRESS=.*|ETH_NODE_ADDRESS=$_RPC|" "$PROJECT_DIR/.env"
     fi
-    unset _RPC
+    # Validate RPC
+    if check_rpc "$_RPC" >/dev/null 2>&1; then
+        echo "[OK] RPC endpoint verified"
+    else
+        echo "[WARN] RPC endpoint did not respond. Checking for alternatives..."
+        _FALLBACK=$(best_rpc 2>/dev/null || echo "")
+        if [ -n "$_FALLBACK" ]; then
+            echo "[OK] Using fallback: $_FALLBACK"
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                sed -i '' "s|^ETH_NODE_ADDRESS=.*|ETH_NODE_ADDRESS=$_FALLBACK|" "$PROJECT_DIR/.env"
+            else
+                sed -i "s|^ETH_NODE_ADDRESS=.*|ETH_NODE_ADDRESS=$_FALLBACK|" "$PROJECT_DIR/.env"
+            fi
+        else
+            echo "[WARN] No healthy RPCs found. Continuing with default."
+        fi
+    fi
+    unset _RPC _FALLBACK
     echo "[OK] Configuration ready"
 fi
 
@@ -153,23 +187,19 @@ if [ -f "$WALLET_ADDR_FILE" ]; then
     echo ""
     echo "  Waiting for funds to arrive..."
 
-    # Poll every 10 seconds until funded
+    # Poll every 10 seconds until funded (with RPC fallback)
+    RPC_URL=$(grep '^ETH_NODE_ADDRESS=' "$PROJECT_DIR/.env" | cut -d= -f2)
+    MOR_TOKEN="0x7431aDa8a591C955a994a21710752EF9b882b8e3"
+    ADDR_CLEAN="${ADDR#0x}"
+    ADDR_PADDED=$(printf '%064s' "$ADDR_CLEAN" | tr ' ' '0')
+    CALL_DATA="0x70a08231${ADDR_PADDED}"
+
     while true; do
-        RPC_URL=$(grep '^ETH_NODE_ADDRESS=' "$PROJECT_DIR/.env" | cut -d= -f2)
-        MOR_TOKEN="0x7431aDa8a591C955a994a21710752EF9b882b8e3"
-        ADDR_CLEAN="${ADDR#0x}"
-        ADDR_PADDED=$(printf '%064s' "$ADDR_CLEAN" | tr ' ' '0')
-        CALL_DATA="0x70a08231${ADDR_PADDED}"
+        ETH_RESP=$(rpc_call "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$ADDR\",\"latest\"],\"id\":1}" "$RPC_URL" 2>/dev/null || echo "")
+        ETH_HEX=$(echo "$ETH_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
 
-        ETH_HEX=$(curl -sf -X POST "$RPC_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$ADDR\",\"latest\"],\"id\":1}" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
-
-        MOR_HEX=$(curl -sf -X POST "$RPC_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"$MOR_TOKEN\",\"data\":\"$CALL_DATA\"},\"latest\"],\"id\":2}" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
+        MOR_RESP=$(rpc_call "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"$MOR_TOKEN\",\"data\":\"$CALL_DATA\"},\"latest\"],\"id\":2}" "$RPC_URL" 2>/dev/null || echo "")
+        MOR_HEX=$(echo "$MOR_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
 
         ETH_DISPLAY=$(python3 -c "print(f'{int(\"$ETH_HEX\", 16) / 1e18:.6f}')")
         MOR_DISPLAY=$(python3 -c "print(f'{int(\"$MOR_HEX\", 16) / 1e18:.4f}')")

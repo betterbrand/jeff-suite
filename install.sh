@@ -41,7 +41,7 @@ if [ -d "$INSTALL_DIR" ]; then
     echo "To reinstall, remove it first: rm -rf $INSTALL_DIR"
     echo ""
     echo "Running setup..."
-    exec "$INSTALL_DIR/scripts/setup.sh"
+    exec "$INSTALL_DIR/scripts/setup.sh" "$@"
 fi
 
 echo "Downloading Jeff Suite..."
@@ -60,4 +60,4 @@ echo "[OK] Installed to $INSTALL_DIR"
 echo ""
 
 # --- Run setup ---
-exec "$INSTALL_DIR/scripts/setup.sh"
+exec "$INSTALL_DIR/scripts/setup.sh" "$@"

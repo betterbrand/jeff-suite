@@ -6,6 +6,9 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 WALLET_ADDR_FILE="$PROJECT_DIR/data/.wallet-address"
 MOR_TOKEN="0x7431aDa8a591C955a994a21710752EF9b882b8e3"
 
+# Source RPC fallback
+. "$SCRIPT_DIR/rpc-check.sh"
+
 # --- Load config ---
 if [ ! -f "$PROJECT_DIR/.env" ]; then
     echo "[FAIL] No .env found. Run ./scripts/setup.sh first."
@@ -22,29 +25,21 @@ WALLET=$(cat "$WALLET_ADDR_FILE")
 
 echo "=== Wallet Balance Check ==="
 echo "  Address: $WALLET"
-echo "  RPC:     $RPC_URL"
 echo ""
 
-# --- Check ETH balance ---
-ETH_HEX=$(curl -sf -X POST "$RPC_URL" \
-    -H "Content-Type: application/json" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$WALLET\",\"latest\"],\"id\":1}" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))")
+# --- Check ETH balance (with fallback) ---
+ETH_RESP=$(rpc_call "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$WALLET\",\"latest\"],\"id\":1}" "$RPC_URL" 2>/dev/null || echo "")
+ETH_HEX=$(echo "$ETH_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
 
-ETH_WEI=$(python3 -c "print(int('$ETH_HEX', 16))")
 ETH_DISPLAY=$(python3 -c "print(f'{int(\"$ETH_HEX\", 16) / 1e18:.6f}')")
 
-# --- Check MOR balance (ERC-20 balanceOf) ---
-# balanceOf(address) selector = 0x70a08231
-# pad address to 32 bytes
+# --- Check MOR balance (with fallback) ---
 ADDR_CLEAN="${WALLET#0x}"
 ADDR_PADDED=$(printf '%064s' "$ADDR_CLEAN" | tr ' ' '0')
 CALL_DATA="0x70a08231${ADDR_PADDED}"
 
-MOR_HEX=$(curl -sf -X POST "$RPC_URL" \
-    -H "Content-Type: application/json" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"$MOR_TOKEN\",\"data\":\"$CALL_DATA\"},\"latest\"],\"id\":2}" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))")
+MOR_RESP=$(rpc_call "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"$MOR_TOKEN\",\"data\":\"$CALL_DATA\"},\"latest\"],\"id\":2}" "$RPC_URL" 2>/dev/null || echo "")
+MOR_HEX=$(echo "$MOR_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
 
 MOR_DISPLAY=$(python3 -c "print(f'{int(\"$MOR_HEX\", 16) / 1e18:.4f}')")
 

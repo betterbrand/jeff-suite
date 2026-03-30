@@ -575,6 +575,37 @@
   }
   .modal-refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+  .badge-error {
+    background: #fde8e8;
+    color: #c44;
+    border: 1px solid #e8b0b0;
+  }
+
+  .badge-error .badge-dot {
+    background: #c44;
+    animation: none;
+  }
+
+  #rpc-banner {
+    padding: 10px 24px;
+    background: #fde8e8;
+    color: #944;
+    font-size: 12px;
+    border-bottom: 1px solid #e8b0b0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  #rpc-banner button {
+    background: none;
+    border: none;
+    color: #944;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+  }
+
   .model-row {
     display: flex;
     align-items: flex-start;
@@ -734,6 +765,13 @@
       <div class="sb-divider"></div>
 
       <div class="sb-section">
+        <div class="sb-label">RPC Health</div>
+        <div id="sb-rpc-status" class="sb-badges">
+          <span class="badge badge-live"><span class="badge-dot"></span> Connected</span>
+        </div>
+      </div>
+
+      <div class="sb-section">
         <div class="sb-label">Network</div>
         <div class="sb-value">BASE Mainnet (8453)</div>
       </div>
@@ -880,6 +918,10 @@ function enterChat(model, sid) {
 
   document.getElementById('header-model').textContent = modelName;
   populateSidebar(model, sid);
+
+  // Start periodic network health poll
+  if (networkPollInterval) clearInterval(networkPollInterval);
+  networkPollInterval = setInterval(fetchNetworkInfo, 30000);
 
   // Restore previous chat if available
   if (loadChatHistory() && chatHistory.length > 0) {
@@ -1088,6 +1130,9 @@ function startSessionTimer() {
   }, 1000);
 }
 
+let rpcFailCount = 0;
+let networkPollInterval = null;
+
 async function fetchNetworkInfo() {
   try {
     const [wallet, balance, allowance, block, supply, budget] = await Promise.all([
@@ -1098,6 +1143,9 @@ async function fetchNetworkInfo() {
       apiFetch('/blockchain/token/supply'),
       apiFetch('/blockchain/sessions/budget'),
     ]);
+
+    rpcFailCount = 0;
+    updateRpcStatus(true);
 
     const addr = wallet.address || '--';
     document.getElementById('sb-wallet').textContent = addr.slice(0, 6) + '...' + addr.slice(-4);
@@ -1121,8 +1169,36 @@ async function fetchNetworkInfo() {
       }
     } catch {}
   } catch (e) {
-    // silently fail — sidebar shows defaults
+    rpcFailCount++;
+    updateRpcStatus(false);
   }
+}
+
+function updateRpcStatus(healthy) {
+  const el = document.getElementById('sb-rpc-status');
+  if (healthy) {
+    el.innerHTML = '<span class="badge badge-live"><span class="badge-dot"></span> Connected</span>';
+    dismissRpcBanner();
+  } else {
+    el.innerHTML = '<span class="badge badge-error"><span class="badge-dot"></span> Unreachable</span>';
+    if (rpcFailCount >= 3) {
+      showRpcBanner();
+    }
+  }
+}
+
+function showRpcBanner() {
+  if (document.getElementById('rpc-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'rpc-banner';
+  banner.innerHTML = '<span>RPC endpoint appears down. Update ETH_NODE_ADDRESS in .env and run ~/jeff-suite/scripts/start.sh</span><button onclick="dismissRpcBanner()">&times;</button>';
+  const messages = document.getElementById('messages');
+  messages.parentNode.insertBefore(banner, messages);
+}
+
+function dismissRpcBanner() {
+  const banner = document.getElementById('rpc-banner');
+  if (banner) banner.remove();
 }
 
 function showModelsModal() {
