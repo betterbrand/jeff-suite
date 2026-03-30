@@ -133,6 +133,30 @@ docker pull ghcr.io/morpheusais/morpheus-lumerin-node:latest
 echo "[OK] Image pulled"
 echo ""
 
+# --- Download MorpheusUI ---
+MORPHEUS_APP="$PROJECT_DIR/MorpheusUI.app"
+if [ ! -d "$MORPHEUS_APP" ]; then
+    echo "Downloading MorpheusUI (signed and notarized)..."
+    DMG_URL="https://github.com/betterbrand/jeff-suite/releases/download/v1.0.0/MorpheusUI-jeff.dmg"
+    DMG_FILE=$(mktemp /tmp/morpheus-XXXXXX.dmg)
+    curl -fsSL -L "$DMG_URL" -o "$DMG_FILE"
+
+    # Mount, copy app, unmount
+    MOUNT_DIR=$(hdiutil attach "$DMG_FILE" -nobrowse 2>/dev/null | tail -1 | sed 's/.*\t//')
+    APP_SRC=$(find "$MOUNT_DIR" -maxdepth 1 -name "*.app" -print -quit 2>/dev/null)
+    if [ -n "$APP_SRC" ]; then
+        cp -R "$APP_SRC" "$MORPHEUS_APP"
+        echo "[OK] MorpheusUI installed"
+    else
+        echo "[WARN] Could not extract MorpheusUI from DMG"
+    fi
+    hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
+    rm -f "$DMG_FILE"
+else
+    echo "[OK] MorpheusUI already installed"
+fi
+echo ""
+
 # --- Start the node ---
 echo "Starting Morpheus node..."
 "$SCRIPT_DIR/start.sh"
@@ -147,8 +171,6 @@ if [ -f "$WALLET_ADDR_FILE" ]; then
     echo "  Your wallet address (BASE network):"
     echo ""
     echo "      $ADDR"
-    echo ""
-    echo "  Send 5 MOR and 0.001 ETH to that address on BASE."
     echo ""
     echo "  Send 5 MOR and 0.001 ETH to that address on BASE."
     echo "  When you've sent it, press Enter and we'll check for it."
@@ -193,13 +215,12 @@ if [ -f "$WALLET_ADDR_FILE" ]; then
         fi
     done
 
-    # --- Open session and first chat ---
+    # --- Launch MorpheusUI ---
     echo ""
-    "$SCRIPT_DIR/open-session.sh"
-    echo ""
-    echo "  You're connected. Try it:"
-    echo ""
-    echo "      cd ~/jeff-suite"
-    echo "      ./scripts/chat.sh \"hello\""
+    MORPHEUS_APP="$PROJECT_DIR/MorpheusUI.app"
+    if [ -d "$MORPHEUS_APP" ]; then
+        echo "  Launching MorpheusUI..."
+        open "$MORPHEUS_APP"
+    fi
     echo ""
 fi
