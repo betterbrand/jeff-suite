@@ -1,3 +1,14 @@
+# Chat UI (chat.html) runs via file:// in the browser, not in Docker.
+# A localhost HTTP server was evaluated but rejected: it adds port management,
+# PID cleanup, exposes .env to local processes, and conflicts with port 3000.
+# file:// works — localStorage and fetch to localhost:8082 both function in
+# Safari and Chrome. If a browser blocks file:// fetch, revisit with a
+# single-file-only server, not a directory serve.
+#
+# The proxy-router below is the only Docker service. chat.html talks to it
+# at http://localhost:8082. Wallet key is injected by scripts/start.sh from
+# macOS Keychain — never stored in plaintext. See CLAUDE.md for full details.
+
 services:
   proxy-router:
     image: ghcr.io/morpheusais/morpheus-lumerin-node:latest
