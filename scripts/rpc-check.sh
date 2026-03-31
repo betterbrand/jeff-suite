@@ -35,7 +35,7 @@ check_rpc() {
   block_hex=$(echo "$body" | python3 -c "import sys,json; print(json.load(sys.stdin).get('result',''))" 2>/dev/null)
   [ -z "$block_hex" ] || [ "$block_hex" = "None" ] && return 1
 
-  block_dec=$(python3 -c "print(int('$block_hex', 16))" 2>/dev/null)
+  block_dec=$(echo "$block_hex" | python3 -c "import sys; print(int(sys.stdin.read().strip(), 16))" 2>/dev/null)
 
   echo "$url $latency_ms $block_dec"
 }

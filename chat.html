@@ -1328,25 +1328,52 @@ async function refreshModelsModal() {
 
       const row = document.createElement('div');
       row.className = 'model-row';
-      row.innerHTML = `
-        <div class="model-row-left">
-          <div class="model-row-name">
-            ${m.Name}
-            ${isTee ? '<span class="badge badge-tee" style="font-size:10px;padding:2px 7px;"><svg viewBox="0 0 16 16" style="width:11px;height:11px;"><path d="M8 1L1.5 4.5v3c0 4.14 2.78 8.01 6.5 9 3.72-.99 6.5-4.86 6.5-9v-3L8 1zm-1 10.5L4.5 9l1.06-1.06L7 9.38l3.44-3.44L11.5 7l-4.5 4.5z"/></svg> TEE</span>' : ''}
-          </div>
-          <div class="model-row-meta">
-            <span>${m.ModelType || 'LLM'}</span>
-            <span>Fee: ${feeStr}</span>
-            <span>Owner: ${(m.Owner || '').slice(0, 8)}...</span>
-          </div>
-          <div class="model-row-tags">
-            ${tags.filter(t => t.toLowerCase() !== 'tee').map(t =>
-              '<span class="badge badge-model">' + t + '</span>'
-            ).join('')}
-          </div>
-          <div class="model-row-id">${m.Id || m.id}</div>
-        </div>
-      `;
+
+      const left = document.createElement('div');
+      left.className = 'model-row-left';
+
+      const nameDiv = document.createElement('div');
+      nameDiv.className = 'model-row-name';
+      const nameText = document.createTextNode(m.Name || '');
+      nameDiv.appendChild(nameText);
+      if (isTee) {
+        const teeBadge = document.createElement('span');
+        teeBadge.className = 'badge badge-tee';
+        teeBadge.style.cssText = 'font-size:10px;padding:2px 7px;';
+        teeBadge.innerHTML = '<svg viewBox="0 0 16 16" style="width:11px;height:11px;"><path d="M8 1L1.5 4.5v3c0 4.14 2.78 8.01 6.5 9 3.72-.99 6.5-4.86 6.5-9v-3L8 1zm-1 10.5L4.5 9l1.06-1.06L7 9.38l3.44-3.44L11.5 7l-4.5 4.5z"/></svg> TEE';
+        nameDiv.appendChild(teeBadge);
+      }
+      left.appendChild(nameDiv);
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'model-row-meta';
+      const typeSpan = document.createElement('span');
+      typeSpan.textContent = m.ModelType || 'LLM';
+      const feeSpan = document.createElement('span');
+      feeSpan.textContent = 'Fee: ' + feeStr;
+      const ownerSpan = document.createElement('span');
+      ownerSpan.textContent = 'Owner: ' + (m.Owner || '').slice(0, 8) + '...';
+      metaDiv.appendChild(typeSpan);
+      metaDiv.appendChild(feeSpan);
+      metaDiv.appendChild(ownerSpan);
+      left.appendChild(metaDiv);
+
+      const tagsDiv = document.createElement('div');
+      tagsDiv.className = 'model-row-tags';
+      tags.filter(t => t.toLowerCase() !== 'tee').forEach(t => {
+        const badge = document.createElement('span');
+        badge.className = 'badge badge-model';
+        badge.textContent = t;
+        tagsDiv.appendChild(badge);
+      });
+      left.appendChild(tagsDiv);
+
+      const idDiv = document.createElement('div');
+      idDiv.className = 'model-row-id';
+      idDiv.textContent = m.Id || m.id || '';
+      left.appendChild(idDiv);
+
+      row.appendChild(left);
       list.appendChild(row);
     });
 

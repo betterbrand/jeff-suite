@@ -75,11 +75,12 @@ app.post('/fund', async (req, res) => {
   }
 
   // Rate limit by IP
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  const ip = req.socket.remoteAddress;
   const lastRequest = ipTimestamps.get(ip);
   if (lastRequest && Date.now() - lastRequest < RATE_LIMIT_MS) {
     return res.status(429).json({ error: 'Rate limited. Try again in a minute.' });
   }
+  ipTimestamps.set(ip, Date.now());
 
   // Check code
   const codes = loadCodes();
@@ -109,8 +110,9 @@ app.post('/fund', async (req, res) => {
       return res.status(503).json({ error: 'Faucet ETH budget depleted' });
     }
 
-    // Record rate limit
-    ipTimestamps.set(ip, Date.now());
+    // Mark code as in-flight before sending transactions
+    codes[code] = { used: true, usedBy: address, usedAt: new Date().toISOString(), status: 'in-flight' };
+    saveCodes(codes);
 
     // Send ETH
     const ethTx = await wallet.sendTransaction({
@@ -124,14 +126,10 @@ app.post('/fund', async (req, res) => {
       ethers.parseUnits(MOR_AMOUNT, 18)
     );
 
-    // Mark code as used
-    codes[code] = {
-      used: true,
-      usedBy: address,
-      usedAt: new Date().toISOString(),
-      ethTx: ethTx.hash,
-      morTx: morTx.hash
-    };
+    // Mark code as completed with tx hashes
+    codes[code].ethTx = ethTx.hash;
+    codes[code].morTx = morTx.hash;
+    codes[code].status = 'completed';
     saveCodes(codes);
 
     console.log(`Funded ${address} via code ${code}: ETH=${ethTx.hash} MOR=${morTx.hash}`);
@@ -145,6 +143,9 @@ app.post('/fund', async (req, res) => {
     });
   } catch (err) {
     console.error(`Fund error for ${address}:`, err.message);
+    codes[code].status = 'failed';
+    codes[code].error = err.message.slice(0, 200);
+    saveCodes(codes);
     res.status(500).json({ error: 'Transaction failed: ' + err.message });
   } finally {
     pendingCodes.delete(code);

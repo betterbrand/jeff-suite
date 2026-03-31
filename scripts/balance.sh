@@ -31,7 +31,7 @@ echo ""
 ETH_RESP=$(rpc_call "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$WALLET\",\"latest\"],\"id\":1}" "$RPC_URL" 2>/dev/null || echo "")
 ETH_HEX=$(echo "$ETH_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
 
-ETH_DISPLAY=$(python3 -c "print(f'{int(\"$ETH_HEX\", 16) / 1e18:.6f}')")
+ETH_DISPLAY=$(echo "$ETH_HEX" | python3 -c "import sys; print(f'{int(sys.stdin.read().strip(), 16) / 1e18:.6f}')")
 
 # --- Check MOR balance (with fallback) ---
 ADDR_CLEAN="${WALLET#0x}"
@@ -41,15 +41,15 @@ CALL_DATA="0x70a08231${ADDR_PADDED}"
 MOR_RESP=$(rpc_call "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"$MOR_TOKEN\",\"data\":\"$CALL_DATA\"},\"latest\"],\"id\":2}" "$RPC_URL" 2>/dev/null || echo "")
 MOR_HEX=$(echo "$MOR_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
 
-MOR_DISPLAY=$(python3 -c "print(f'{int(\"$MOR_HEX\", 16) / 1e18:.4f}')")
+MOR_DISPLAY=$(echo "$MOR_HEX" | python3 -c "import sys; print(f'{int(sys.stdin.read().strip(), 16) / 1e18:.4f}')")
 
 echo "  ETH: $ETH_DISPLAY"
 echo "  MOR: $MOR_DISPLAY"
 echo ""
 
 # --- Readiness check ---
-ETH_OK=$(python3 -c "print('yes' if int('$ETH_HEX', 16) > 0 else 'no')")
-MOR_OK=$(python3 -c "print('yes' if int('$MOR_HEX', 16) >= int(5e18) else 'no')")
+ETH_OK=$(echo "$ETH_HEX" | python3 -c "import sys; print('yes' if int(sys.stdin.read().strip(), 16) > 0 else 'no')")
+MOR_OK=$(echo "$MOR_HEX" | python3 -c "import sys; print('yes' if int(sys.stdin.read().strip(), 16) >= int(5e18) else 'no')")
 
 if [ "$ETH_OK" = "yes" ] && [ "$MOR_OK" = "yes" ]; then
     echo "  [OK] Wallet funded. Ready to go."

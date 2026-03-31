@@ -54,14 +54,10 @@ else
     sed -i "s|^WALLET_PRIVATE_KEY=.*|WALLET_PRIVATE_KEY=$WALLET_KEY|" "$PROJECT_DIR/.env"
 fi
 
-docker compose up -d
+# Guarantee sentinel is restored even if the script exits unexpectedly
+trap 'if [[ "$OSTYPE" == "darwin"* ]]; then sed -i "" "s|^WALLET_PRIVATE_KEY=.*|WALLET_PRIVATE_KEY=KEYCHAIN|" "$PROJECT_DIR/.env"; else sed -i "s|^WALLET_PRIVATE_KEY=.*|WALLET_PRIVATE_KEY=KEYCHAIN|" "$PROJECT_DIR/.env"; fi' EXIT
 
-# Restore sentinel so key isn't sitting in plaintext
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s|^WALLET_PRIVATE_KEY=.*|WALLET_PRIVATE_KEY=KEYCHAIN|" "$PROJECT_DIR/.env"
-else
-    sed -i "s|^WALLET_PRIVATE_KEY=.*|WALLET_PRIVATE_KEY=KEYCHAIN|" "$PROJECT_DIR/.env"
-fi
+docker compose up -d
 
 # Clear key from shell
 unset WALLET_KEY

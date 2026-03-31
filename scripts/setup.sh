@@ -237,11 +237,11 @@ if [ -f "$WALLET_ADDR_FILE" ]; then
         MOR_RESP=$(rpc_call "{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[{\"to\":\"$MOR_TOKEN\",\"data\":\"$CALL_DATA\"},\"latest\"],\"id\":2}" "$RPC_URL" 2>/dev/null || echo "")
         MOR_HEX=$(echo "$MOR_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('result','0x0'))" 2>/dev/null || echo "0x0")
 
-        ETH_DISPLAY=$(python3 -c "print(f'{int(\"$ETH_HEX\", 16) / 1e18:.6f}')")
-        MOR_DISPLAY=$(python3 -c "print(f'{int(\"$MOR_HEX\", 16) / 1e18:.4f}')")
+        ETH_DISPLAY=$(echo "$ETH_HEX" | python3 -c "import sys; print(f'{int(sys.stdin.read().strip(), 16) / 1e18:.6f}')")
+        MOR_DISPLAY=$(echo "$MOR_HEX" | python3 -c "import sys; print(f'{int(sys.stdin.read().strip(), 16) / 1e18:.4f}')")
 
-        ETH_OK=$(python3 -c "print('yes' if int('$ETH_HEX', 16) > 0 else 'no')")
-        MOR_OK=$(python3 -c "print('yes' if int('$MOR_HEX', 16) >= int(3e18) else 'no')")
+        ETH_OK=$(echo "$ETH_HEX" | python3 -c "import sys; print('yes' if int(sys.stdin.read().strip(), 16) > 0 else 'no')")
+        MOR_OK=$(echo "$MOR_HEX" | python3 -c "import sys; print('yes' if int(sys.stdin.read().strip(), 16) >= int(3e18) else 'no')")
 
         if [ "$ETH_OK" = "yes" ] && [ "$MOR_OK" = "yes" ]; then
             echo "  ETH: $ETH_DISPLAY  |  MOR: $MOR_DISPLAY"
