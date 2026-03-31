@@ -3,3 +3,7 @@ data/
 .cookie
 .DS_Store
 MorpheusUI.dmg
+faucet/.env
+faucet/codes.json
+faucet/node_modules/
+faucet/package-lock.json

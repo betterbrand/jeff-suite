@@ -14,9 +14,11 @@ WALLET_ADDR_FILE="$PROJECT_DIR/data/.wallet-address"
 
 # Parse arguments
 USER_RPC=""
+INVITE_CODE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --rpc) USER_RPC="$2"; shift 2 ;;
+    --invite) INVITE_CODE="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -115,6 +117,34 @@ if [ "$SKIP_WALLET" = false ]; then
     mkdir -p "$PROJECT_DIR/data"
     echo "$WALLET_ADDRESS" > "$WALLET_ADDR_FILE"
     echo ""
+
+    # --- Request funding via invite code ---
+    SKIP_FUNDING_WAIT=false
+    if [ -n "$INVITE_CODE" ]; then
+        FAUCET_URL="${FAUCET_URL:-}"
+        if [ -n "$FAUCET_URL" ]; then
+            echo "Requesting funds via invite code..."
+            FAUCET_RESP=$(curl -sf --max-time 15 -X POST "$FAUCET_URL/fund" \
+                -H "Content-Type: application/json" \
+                -d "{\"code\":\"$INVITE_CODE\",\"address\":\"$WALLET_ADDRESS\"}" \
+                2>/dev/null || echo '{"error":"faucet unreachable"}')
+
+            FAUCET_OK=$(echo "$FAUCET_RESP" | python3 -c "import sys,json; print('yes' if json.load(sys.stdin).get('success') else 'no')" 2>/dev/null || echo "no")
+            if [ "$FAUCET_OK" = "yes" ]; then
+                echo "[OK] Funds sent! 3 MOR + 0.003 ETH incoming (~2 seconds on BASE)"
+                SKIP_FUNDING_WAIT=true
+            else
+                FAUCET_ERR=$(echo "$FAUCET_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','unknown'))" 2>/dev/null || echo "unknown")
+                echo "[WARN] Faucet: $FAUCET_ERR"
+                echo "  Falling back to manual funding."
+            fi
+        else
+            echo "[WARN] Invite code provided but no FAUCET_URL set."
+            echo "  Falling back to manual funding."
+        fi
+    else
+        SKIP_FUNDING_WAIT=false
+    fi
 fi
 
 # --- Configure .env ---
@@ -183,11 +213,17 @@ if [ -f "$WALLET_ADDR_FILE" ]; then
     echo ""
     echo "      $ADDR"
     echo ""
-    echo "  Send 5 MOR and 0.001 ETH to that address on BASE."
-    echo ""
-    echo "  Waiting for funds to arrive..."
 
-    # Poll every 10 seconds until funded (with RPC fallback)
+    if [ "${SKIP_FUNDING_WAIT:-false}" = true ]; then
+        echo "  Funds arriving via invite code. Waiting for confirmation..."
+        sleep 5
+    else
+        echo "  Send 3 MOR and 0.003 ETH to that address on BASE."
+        echo ""
+        echo "  Waiting for funds to arrive..."
+    fi
+
+    # Poll until funded (with RPC fallback). Min 3 MOR for faucet-funded wallets.
     RPC_URL=$(grep '^ETH_NODE_ADDRESS=' "$PROJECT_DIR/.env" | cut -d= -f2)
     MOR_TOKEN="0x7431aDa8a591C955a994a21710752EF9b882b8e3"
     ADDR_CLEAN="${ADDR#0x}"
@@ -205,7 +241,7 @@ if [ -f "$WALLET_ADDR_FILE" ]; then
         MOR_DISPLAY=$(python3 -c "print(f'{int(\"$MOR_HEX\", 16) / 1e18:.4f}')")
 
         ETH_OK=$(python3 -c "print('yes' if int('$ETH_HEX', 16) > 0 else 'no')")
-        MOR_OK=$(python3 -c "print('yes' if int('$MOR_HEX', 16) >= int(5e18) else 'no')")
+        MOR_OK=$(python3 -c "print('yes' if int('$MOR_HEX', 16) >= int(3e18) else 'no')")
 
         if [ "$ETH_OK" = "yes" ] && [ "$MOR_OK" = "yes" ]; then
             echo "  ETH: $ETH_DISPLAY  |  MOR: $MOR_DISPLAY"

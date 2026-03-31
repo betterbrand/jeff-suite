@@ -1,0 +1,10 @@
+services:
+  faucet:
+    build: .
+    ports:
+      - "3456:3456"
+    env_file:
+      - .env
+    volumes:
+      - ./codes.json:/app/codes.json
+    restart: unless-stopped
