@@ -102,7 +102,7 @@ app.get('/health', async (req, res) => {
 app.get('/admin/codes', requireAdmin, async (req, res) => {
   try {
     const { rows } = await db.query(
-      'SELECT code, used, status, used_by, used_at, eth_tx, mor_tx, created_at FROM codes ORDER BY created_at DESC'
+      'SELECT code, used, status, used_by, used_at, eth_tx, mor_tx, error, created_at FROM codes ORDER BY created_at DESC'
     );
     const { rows: [stats] } = await db.query(`
       SELECT COUNT(*) AS total,
@@ -113,6 +113,24 @@ app.get('/admin/codes', requireAdmin, async (req, res) => {
     res.json({ codes: rows, stats: { total: parseInt(stats.total), used: parseInt(stats.used), available: parseInt(stats.available) } });
   } catch (err) {
     res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.get('/admin/wallet', requireAdmin, async (req, res) => {
+  try {
+    const balance = await provider.getBalance(wallet.address);
+    const morBalance = await morContract.balanceOf(wallet.address);
+    const nonce = await provider.getTransactionCount(wallet.address);
+    res.json({
+      address: wallet.address,
+      eth: ethers.formatEther(balance),
+      mor: ethers.formatUnits(morBalance, 18),
+      nonce,
+      perInvite: { mor: MOR_AMOUNT, eth: ETH_AMOUNT },
+      invitesRemaining: Math.floor(parseFloat(ethers.formatUnits(morBalance, 18)) / parseFloat(MOR_AMOUNT))
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch wallet info' });
   }
 });
 
