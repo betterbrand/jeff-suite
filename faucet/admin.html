@@ -589,11 +589,11 @@ function renderCodes() {
     availEl.innerHTML = available.map(c => `
       <div class="code-row" style="gap:6px;">
         <span class="code-text" style="flex:1;">${esc(c.code)}</span>
+        <button class="btn btn-copy" onclick="shareInvite('${esc(c.code)}', this)" title="Share invite">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V13a1 1 0 001 1h6a1 1 0 001-1V8"/><polyline points="11 4 8 1 5 4"/><line x1="8" y1="1" x2="8" y2="10"/></svg>
+        </button>
         <button class="btn btn-copy" onclick="copyCurl('${esc(c.code)}', this)" title="Copy install command">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="5 3 1 8 5 13"/><line x1="1" y1="8" x2="15" y2="8"/></svg>
-        </button>
-        <button class="btn btn-copy" onclick="copyCode('${esc(c.code)}', this)" title="Copy code">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5V3.5A1.5 1.5 0 013.5 2h6A1.5 1.5 0 0111 3.5V5"/></svg>
         </button>
       </div>
     `).join('');
@@ -637,6 +637,21 @@ function esc(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+function shareInvite(code, btn) {
+  const curl = 'curl -fsSL https://raw.githubusercontent.com/betterbrand/j-suite/main/install.sh | bash -s -- --invite ' + code;
+  const text = 'Try Morpheus decentralized AI. Paste this in Terminal:\n\n' + curl;
+  if (navigator.share) {
+    navigator.share({ text }).catch(() => {
+      copyText(curl);
+      toast('Copied (share unavailable)');
+    });
+  } else {
+    copyText(curl);
+    toast('Copied install command');
+  }
+  if (btn) { btn.classList.add('copied'); setTimeout(() => btn.classList.remove('copied'), 1500); }
 }
 
 function copyCurl(code, btn) {
