@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 
 const count = parseInt(process.argv[2]) || 10;
+const assignedTo = process.argv[3] || null;
 
 async function main() {
   const url = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
@@ -17,7 +18,7 @@ async function main() {
     ssl: { rejectUnauthorized: false }
   });
 
-  // Ensure table exists
+  // Ensure table + column exist
   await db.query(`
     CREATE TABLE IF NOT EXISTS codes (
       code TEXT PRIMARY KEY,
@@ -28,15 +29,17 @@ async function main() {
       eth_tx TEXT,
       mor_tx TEXT,
       error TEXT,
+      assigned_to TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await db.query('ALTER TABLE codes ADD COLUMN IF NOT EXISTS assigned_to TEXT');
 
   const generated = [];
   for (let i = 0; i < count; i++) {
     const code = crypto.randomBytes(4).toString('hex').toUpperCase();
     try {
-      await db.query('INSERT INTO codes (code) VALUES ($1) ON CONFLICT DO NOTHING', [code]);
+      await db.query('INSERT INTO codes (code, assigned_to) VALUES ($1, $2) ON CONFLICT DO NOTHING', [code, assignedTo]);
       generated.push(code);
     } catch (err) {
       // skip duplicates
@@ -47,7 +50,7 @@ async function main() {
     `SELECT COUNT(*) FILTER (WHERE NOT used) AS available, COUNT(*) AS total FROM codes`
   );
 
-  console.log(`Generated ${generated.length} invite code(s):`);
+  console.log(`Generated ${generated.length} invite code(s)${assignedTo ? ` for "${assignedTo}"` : ''}:`);
   generated.forEach(c => console.log(`  ${c}`));
   console.log(`\nTotal: ${stats.total} codes (${stats.available} available)`);
 

@@ -66,9 +66,13 @@ async function initDb() {
       eth_tx TEXT,
       mor_tx TEXT,
       error TEXT,
+      assigned_to TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  // Migration for existing tables
+  await db.query(`ALTER TABLE codes ADD COLUMN IF NOT EXISTS assigned_to TEXT`);
 }
 
 // --- Routes ---
@@ -102,7 +106,7 @@ app.get('/health', async (req, res) => {
 app.get('/admin/codes', requireAdmin, async (req, res) => {
   try {
     const { rows } = await db.query(
-      'SELECT code, used, status, used_by, used_at, eth_tx, mor_tx, error, created_at FROM codes ORDER BY created_at DESC'
+      'SELECT code, used, status, used_by, used_at, eth_tx, mor_tx, error, assigned_to, created_at FROM codes ORDER BY created_at DESC'
     );
     const { rows: [stats] } = await db.query(`
       SELECT COUNT(*) AS total,
@@ -148,6 +152,21 @@ app.post('/admin/generate', requireAdmin, async (req, res) => {
     `);
     console.log(`Admin: generated ${generated.length} codes`);
     res.json({ generated, stats: { total: parseInt(stats.total), available: parseInt(stats.available) } });
+  } catch (err) {
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/admin/assign', requireAdmin, async (req, res) => {
+  const { code, name } = req.body;
+  if (!code) return res.status(400).json({ error: 'Missing code' });
+  try {
+    const { rowCount } = await db.query(
+      'UPDATE codes SET assigned_to = $1 WHERE code = $2',
+      [name || null, code]
+    );
+    if (rowCount === 0) return res.status(404).json({ error: 'Code not found' });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Database error' });
   }

@@ -586,17 +586,32 @@ function renderCodes() {
   if (available.length === 0) {
     availEl.innerHTML = '<div class="empty">No available codes. Generate some above.</div>';
   } else {
-    availEl.innerHTML = available.map(c => `
-      <div class="code-row" style="gap:6px;">
-        <span class="code-text" style="flex:1;">${esc(c.code)}</span>
+    availEl.innerHTML = available.map(c => {
+      const name = c.assigned_to ? esc(c.assigned_to) : '';
+      const codeId = 'assign-' + esc(c.code);
+      return `
+      <div class="code-row" style="gap:6px; flex-wrap:wrap;">
+        <div style="flex:1; min-width:0;">
+          <span class="code-text">${esc(c.code)}</span>
+          ${name ? '<span style="font-size:12px; color:var(--accent); margin-left:8px;">' + name + '</span>' : ''}
+          <div id="${codeId}" style="display:none; margin-top:6px;">
+            <div style="display:flex; gap:4px;">
+              <input type="text" placeholder="Assign to..." value="${name}" style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:4px; font-family:inherit; font-size:12px; outline:none;" onkeydown="if(event.key==='Enter')assignCode('${esc(c.code)}',this.value)">
+              <button class="btn btn-outline btn-small" onclick="assignCode('${esc(c.code)}',this.previousElementSibling.value)">Save</button>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-copy" onclick="toggleAssign('${codeId}')" title="Assign name">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
+        </button>
         <button class="btn btn-copy" onclick="shareInvite('${esc(c.code)}', this)" title="Share invite">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V13a1 1 0 001 1h6a1 1 0 001-1V8"/><polyline points="11 4 8 1 5 4"/><line x1="8" y1="1" x2="8" y2="10"/></svg>
         </button>
         <button class="btn btn-copy" onclick="copyCurl('${esc(c.code)}', this)" title="Copy install command">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="5 3 1 8 5 13"/><line x1="1" y1="8" x2="15" y2="8"/></svg>
         </button>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }
 
   const usedEl = document.getElementById('used-list');
@@ -621,9 +636,11 @@ function renderCodes() {
         extra += '<div class="error-detail">' + esc(c.error) + '</div>';
       }
 
+      const assignedName = c.assigned_to ? '<span style="color:var(--accent); font-size:12px; margin-left:6px;">' + esc(c.assigned_to) + '</span>' : '';
+
       return '<div class="code-row" style="flex-wrap:wrap;">' +
         '<div style="flex:1; min-width:0;">' +
-          '<span class="code-text" style="font-size:13px;">' + esc(c.code) + '</span>' +
+          '<span class="code-text" style="font-size:13px;">' + esc(c.code) + '</span>' + assignedName +
           '<div class="code-meta">' + addrShort + ' \u00b7 ' + time + '</div>' +
           extra +
         '</div>' +
@@ -637,6 +654,25 @@ function esc(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+function toggleAssign(id) {
+  const el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el.style.display === 'block') el.querySelector('input').focus();
+}
+
+async function assignCode(code, name) {
+  try {
+    await adminFetch('/admin/assign', {
+      method: 'POST',
+      body: JSON.stringify({ code, name })
+    });
+    toast(name ? 'Assigned to ' + name : 'Name cleared');
+    loadDashboard();
+  } catch (e) {
+    toast('Failed to assign');
+  }
 }
 
 function shareInvite(code, btn) {

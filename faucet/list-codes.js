@@ -11,8 +11,9 @@ if (!url) {
 const db = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
 
 async function main() {
+  await db.query('ALTER TABLE codes ADD COLUMN IF NOT EXISTS assigned_to TEXT');
   const { rows } = await db.query(
-    'SELECT code, used, status, used_by, used_at FROM codes ORDER BY created_at'
+    'SELECT code, used, status, used_by, used_at, assigned_to FROM codes ORDER BY created_at'
   );
 
   const available = rows.filter(r => !r.used);
@@ -22,13 +23,21 @@ async function main() {
 
   if (available.length) {
     console.log('Available:');
-    available.forEach(r => console.log(`  ${r.code}`));
+    available.forEach(r => {
+      const name = r.assigned_to ? ` (${r.assigned_to})` : '';
+      console.log(`  ${r.code}${name}`);
+    });
     console.log();
   }
 
   if (used.length) {
     console.log('Used:');
-    used.forEach(r => console.log(`  ${r.code}  ${r.status}  ${(r.used_by || '').slice(0, 10)}...  ${r.used_at ? new Date(r.used_at).toLocaleString() : ''}`));
+    used.forEach(r => {
+      const name = r.assigned_to ? ` (${r.assigned_to})` : '';
+      const addr = (r.used_by || '').slice(0, 10) + '...';
+      const time = r.used_at ? new Date(r.used_at).toLocaleString() : '';
+      console.log(`  ${r.code}${name}  ${r.status}  ${addr}  ${time}`);
+    });
     console.log();
   }
 
