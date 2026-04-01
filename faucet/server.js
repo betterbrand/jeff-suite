@@ -189,11 +189,12 @@ app.post('/fund', async (req, res) => {
       return res.status(503).json({ error: 'Faucet ETH budget depleted' });
     }
 
-    // Send ETH
+    // Send ETH, wait for confirmation before MOR to avoid nonce collision
     const ethTx = await wallet.sendTransaction({
       to: address,
       value: ethers.parseEther(ETH_AMOUNT)
     });
+    await ethTx.wait();
 
     // Send MOR
     const morTx = await morContract.transfer(
