@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J Suite Faucet Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --surface: #fff;
+    --border: #e2e0db;
+    --text: #2a2a2a;
+    --text-dim: #8a8880;
+    --text-light: #b0ada6;
+    --accent: #0f8856;
+    --accent-light: #e6f7ee;
+    --accent-hover: #0a6e44;
+    --red: #c44;
+    --amber: #c90;
+    --radius: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', -apple-system, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  .container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 24px 16px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 24px;
+  }
+
+  /* Setup screen */
+  #setup {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+  }
+
+  #setup-inner {
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+  }
+
+  #setup-inner h1 { margin-bottom: 8px; }
+
+  #secret-input {
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    margin: 16px 0 10px;
+  }
+
+  #secret-input:focus { border-color: var(--accent); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: none;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    width: 100%;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.4; cursor: default; }
+
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-small {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .btn-copy {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 5px 8px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .btn-copy:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-copy.copied { border-color: var(--accent); color: var(--accent); }
+
+  /* Stats bar */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    text-align: center;
+  }
+
+  .stat-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .stat-value.green { color: var(--accent); }
+  .stat-value.amber { color: var(--amber); }
+  .stat-value.red { color: var(--red); }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+
+  /* Sections */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-title {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .section-body { padding: 0; }
+
+  /* Code rows */
+  .code-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    min-height: 48px;
+  }
+
+  .code-row:last-child { border-bottom: none; }
+
+  .code-text {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    color: var(--text);
+    user-select: all;
+  }
+
+  .code-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .code-status {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+
+  .code-status.available { background: var(--accent-light); color: var(--accent); }
+  .code-status.completed { background: #eee; color: var(--text-dim); }
+  .code-status.failed { background: #fde8e8; color: var(--red); }
+  .code-status.in-flight { background: #fef3cd; color: var(--amber); }
+
+  /* Generate section */
+  .generate-row {
+    display: flex;
+    gap: 8px;
+    padding: 14px 16px;
+    align-items: center;
+  }
+
+  .generate-input {
+    width: 70px;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 14px;
+    text-align: center;
+    outline: none;
+  }
+
+  .generate-input:focus { border-color: var(--accent); }
+
+  /* Empty state */
+  .empty {
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-light);
+    font-size: 13px;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 16px;
+    font-size: 11px;
+    color: var(--text-light);
+  }
+
+  .footer a {
+    color: var(--text-dim);
+    text-decoration: none;
+  }
+  .footer a:hover { color: var(--red); }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  #toast.show { opacity: 1; }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-light);
+  }
+
+  .hidden { display: none !important; }
+
+  /* Responsive */
+  @media (max-width: 400px) {
+    .stats { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .stat { padding: 10px 8px; }
+    .stat-value { font-size: 20px; }
+    .code-text { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="setup">
+  <div id="setup-inner">
+    <h1>Faucet Admin</h1>
+    <p class="subtitle">Enter your admin secret to continue.</p>
+    <input type="password" id="secret-input" placeholder="Admin secret" onkeydown="if(event.key==='Enter')saveSecret()">
+    <button class="btn btn-primary" onclick="saveSecret()">Connect</button>
+    <p id="setup-error" style="color:var(--red); font-size:12px; margin-top:12px;"></p>
+  </div>
+</div>
+
+<div id="dashboard" class="hidden">
+  <div class="container">
+    <h1>Faucet Admin</h1>
+    <p class="subtitle">Morpheus Onboarding Faucet</p>
+
+    <div class="stats">
+      <div class="stat">
+        <div id="stat-available" class="stat-value green">--</div>
+        <div class="stat-label">Available</div>
+      </div>
+      <div class="stat">
+        <div id="stat-used" class="stat-value">--</div>
+        <div class="stat-label">Used</div>
+      </div>
+      <div class="stat">
+        <div id="stat-mor" class="stat-value">--</div>
+        <div class="stat-label">MOR Out</div>
+      </div>
+    </div>
+
+    <!-- Generate -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Generate Codes</span>
+      </div>
+      <div class="generate-row">
+        <input type="number" id="gen-count" class="generate-input" value="5" min="1" max="50" inputmode="numeric">
+        <button class="btn btn-primary" style="flex:1" onclick="generateCodes()" id="gen-btn">Generate</button>
+      </div>
+      <div id="gen-result" class="hidden" style="padding: 0 16px 14px;">
+        <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">New codes:</div>
+        <div id="gen-codes" style="font-family:monospace; font-size:13px; line-height:1.8;"></div>
+      </div>
+    </div>
+
+    <!-- Available Codes -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Available Codes</span>
+        <button class="btn btn-outline btn-small" onclick="copyAllAvailable()">Copy All</button>
+      </div>
+      <div class="section-body" id="available-list">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Used Codes -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Used Codes</span>
+      </div>
+      <div class="section-body" id="used-list">
+        <div class="loading">Loading...</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <a href="#" onclick="clearSecret(); return false;">Clear saved secret</a>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = 'https://faucet-production-d8c8.up.railway.app';
+let adminSecret = '';
+let allCodes = [];
+
+function getSecret() {
+  try { return localStorage.getItem('faucetAdminSecret') || ''; } catch { return ''; }
+}
+
+function setSecret(s) {
+  try { localStorage.setItem('faucetAdminSecret', s); } catch {}
+}
+
+function clearSecret() {
+  try { localStorage.removeItem('faucetAdminSecret'); } catch {}
+  adminSecret = '';
+  document.getElementById('dashboard').classList.add('hidden');
+  document.getElementById('setup').classList.remove('hidden');
+  document.getElementById('secret-input').value = '';
+}
+
+async function adminFetch(path, opts = {}) {
+  const headers = { 'X-Admin-Secret': adminSecret, ...opts.headers };
+  if (opts.body) headers['Content-Type'] = 'application/json';
+  const resp = await fetch(API + path, { ...opts, headers });
+  if (resp.status === 401) {
+    clearSecret();
+    throw new Error('Invalid secret');
+  }
+  return resp.json();
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+async function saveSecret() {
+  const input = document.getElementById('secret-input');
+  const errEl = document.getElementById('setup-error');
+  const secret = input.value.trim();
+  if (!secret) { errEl.textContent = 'Enter a secret'; return; }
+
+  adminSecret = secret;
+  errEl.textContent = 'Connecting...';
+
+  try {
+    await adminFetch('/admin/codes');
+    setSecret(secret);
+    document.getElementById('setup').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+    loadDashboard();
+  } catch (e) {
+    errEl.textContent = 'Invalid secret';
+    adminSecret = '';
+  }
+}
+
+async function loadDashboard() {
+  try {
+    const [health, codesData] = await Promise.all([
+      fetch(API + '/health').then(r => r.json()),
+      adminFetch('/admin/codes')
+    ]);
+
+    allCodes = codesData.codes || [];
+    const stats = codesData.stats || {};
+
+    document.getElementById('stat-available').textContent = stats.available || 0;
+    document.getElementById('stat-used').textContent = stats.used || 0;
+    document.getElementById('stat-mor').textContent = (stats.used * parseFloat(health.disbursed?.mor / stats.used || 3)).toFixed(0) || '0';
+    document.getElementById('stat-mor').textContent = health.disbursed?.mor?.toFixed(0) || '0';
+
+    const availableEl = document.getElementById('stat-available');
+    availableEl.className = 'stat-value ' + (stats.available === 0 ? 'red' : stats.available < 5 ? 'amber' : 'green');
+
+    renderCodes();
+  } catch (e) {
+    document.getElementById('available-list').innerHTML = '<div class="empty">Failed to load</div>';
+  }
+}
+
+function renderCodes() {
+  const available = allCodes.filter(c => !c.used);
+  const used = allCodes.filter(c => c.used);
+
+  const availEl = document.getElementById('available-list');
+  if (available.length === 0) {
+    availEl.innerHTML = '<div class="empty">No available codes. Generate some above.</div>';
+  } else {
+    availEl.innerHTML = available.map(c => `
+      <div class="code-row">
+        <span class="code-text">${esc(c.code)}</span>
+        <button class="btn btn-copy" onclick="copyCode('${esc(c.code)}', this)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 012 9.5V3.5A1.5 1.5 0 013.5 2h6A1.5 1.5 0 0111 3.5V5"/></svg>
+        </button>
+      </div>
+    `).join('');
+  }
+
+  const usedEl = document.getElementById('used-list');
+  if (used.length === 0) {
+    usedEl.innerHTML = '<div class="empty">No codes used yet.</div>';
+  } else {
+    usedEl.innerHTML = used.map(c => {
+      const addr = c.used_by ? c.used_by.slice(0, 6) + '...' + c.used_by.slice(-4) : '';
+      const time = c.used_at ? new Date(c.used_at).toLocaleDateString() : '';
+      return `
+        <div class="code-row" style="flex-wrap:wrap;">
+          <div>
+            <span class="code-text" style="font-size:13px;">${esc(c.code)}</span>
+            <div class="code-meta">${addr} ${time}</div>
+          </div>
+          <span class="code-status ${c.status || 'completed'}">${c.status || 'completed'}</span>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+function esc(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function copyCode(code, btn) {
+  copyText(code);
+  if (btn) {
+    btn.classList.add('copied');
+    setTimeout(() => btn.classList.remove('copied'), 1500);
+  }
+  toast('Copied: ' + code);
+}
+
+function copyAllAvailable() {
+  const available = allCodes.filter(c => !c.used).map(c => c.code);
+  if (!available.length) { toast('No codes to copy'); return; }
+  copyText(available.join('\n'));
+  toast('Copied ' + available.length + ' codes');
+}
+
+function copyText(text) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
+async function generateCodes() {
+  const btn = document.getElementById('gen-btn');
+  const count = parseInt(document.getElementById('gen-count').value) || 5;
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+
+  try {
+    const data = await adminFetch('/admin/generate', {
+      method: 'POST',
+      body: JSON.stringify({ count })
+    });
+
+    const resultEl = document.getElementById('gen-result');
+    const codesEl = document.getElementById('gen-codes');
+    resultEl.classList.remove('hidden');
+    codesEl.innerHTML = data.generated.map(c =>
+      '<span style="cursor:pointer;" onclick="copyCode(\'' + esc(c) + '\')">' + esc(c) + '</span>'
+    ).join('<br>');
+
+    toast('Generated ' + data.generated.length + ' codes');
+    loadDashboard();
+  } catch (e) {
+    toast('Failed to generate');
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Generate';
+}
+
+// Init
+adminSecret = getSecret();
+if (adminSecret) {
+  document.getElementById('setup').classList.add('hidden');
+  document.getElementById('dashboard').classList.remove('hidden');
+  loadDashboard();
+}
+</script>
+</body>
+</html>

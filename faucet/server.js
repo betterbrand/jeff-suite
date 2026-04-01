@@ -24,7 +24,29 @@ const ERC20_ABI = [
 const ipTimestamps = new Map();
 const RATE_LIMIT_MS = 60000;
 
+const crypto = require('crypto');
+
 let provider, wallet, morContract, db;
+
+// --- Admin auth ---
+
+function requireAdmin(req, res, next) {
+  if (!process.env.ADMIN_SECRET) {
+    return res.status(503).json({ error: 'Admin endpoints not configured' });
+  }
+  const secret = req.headers['x-admin-secret'];
+  if (!secret || secret.length !== process.env.ADMIN_SECRET.length) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(secret), Buffer.from(process.env.ADMIN_SECRET))) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  } catch {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
 
 // --- Database ---
 
@@ -74,6 +96,46 @@ app.get('/health', async (req, res) => {
     res.status(500).json({ status: 'error', error: 'Database unavailable' });
   }
 });
+
+// --- Admin routes ---
+
+app.get('/admin/codes', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT code, used, status, used_by, used_at, eth_tx, mor_tx, created_at FROM codes ORDER BY created_at DESC'
+    );
+    const { rows: [stats] } = await db.query(`
+      SELECT COUNT(*) AS total,
+             COUNT(*) FILTER (WHERE used) AS used,
+             COUNT(*) FILTER (WHERE NOT used) AS available
+      FROM codes
+    `);
+    res.json({ codes: rows, stats: { total: parseInt(stats.total), used: parseInt(stats.used), available: parseInt(stats.available) } });
+  } catch (err) {
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/admin/generate', requireAdmin, async (req, res) => {
+  const count = Math.min(Math.max(parseInt(req.body.count) || 5, 1), 50);
+  const generated = [];
+  try {
+    for (let i = 0; i < count; i++) {
+      const code = crypto.randomBytes(6).toString('hex').toUpperCase();
+      const { rowCount } = await db.query('INSERT INTO codes (code) VALUES ($1) ON CONFLICT DO NOTHING', [code]);
+      if (rowCount > 0) generated.push(code);
+    }
+    const { rows: [stats] } = await db.query(`
+      SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE NOT used) AS available FROM codes
+    `);
+    console.log(`Admin: generated ${generated.length} codes`);
+    res.json({ generated, stats: { total: parseInt(stats.total), available: parseInt(stats.available) } });
+  } catch (err) {
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// --- Public routes ---
 
 app.post('/fund', async (req, res) => {
   const { code, address } = req.body;
