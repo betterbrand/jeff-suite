@@ -2,8 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { ethers } = require('ethers');
-const fs = require('fs');
-const path = require('path');
+const { Pool } = require('pg');
 
 const app = express();
 app.use(cors());
@@ -15,57 +14,70 @@ const MOR_AMOUNT = process.env.MOR_AMOUNT || '3';
 const ETH_AMOUNT = process.env.ETH_AMOUNT || '0.00005';
 const MAX_TOTAL_MOR = parseFloat(process.env.MAX_TOTAL_MOR || '300');
 const MAX_TOTAL_ETH = parseFloat(process.env.MAX_TOTAL_ETH || '0.005');
-const CODES_FILE = path.join(__dirname, 'codes.json');
 
-// ERC-20 transfer ABI
-const ERC20_ABI = ['function transfer(address to, uint256 amount) returns (bool)'];
+const ERC20_ABI = [
+  'function transfer(address to, uint256 amount) returns (bool)',
+  'function balanceOf(address) view returns (uint256)'
+];
 
-// Rate limiting
+// Rate limiting (in-memory, per-instance)
 const ipTimestamps = new Map();
 const RATE_LIMIT_MS = 60000;
 
-// In-memory lock for concurrent code redemption
-const pendingCodes = new Set();
+let provider, wallet, morContract, db;
 
-let provider, wallet, morContract;
+// --- Database ---
 
-function loadCodes() {
-  if (!fs.existsSync(CODES_FILE)) {
-    console.error('codes.json not found. Run: node generate-codes.js');
-    process.exit(1);
-  }
-  return JSON.parse(fs.readFileSync(CODES_FILE, 'utf8'));
-}
-
-function saveCodes(codes) {
-  fs.writeFileSync(CODES_FILE, JSON.stringify(codes, null, 2) + '\n');
-}
-
-function getTotalDisbursed(codes) {
-  const used = Object.values(codes).filter(c => c.used);
-  return {
-    mor: used.length * parseFloat(MOR_AMOUNT),
-    eth: used.length * parseFloat(ETH_AMOUNT)
-  };
-}
-
-app.get('/health', (req, res) => {
-  const codes = loadCodes();
-  const total = getTotalDisbursed(codes);
-  const totalCodes = Object.keys(codes).length;
-  const usedCodes = Object.values(codes).filter(c => c.used).length;
-  res.json({
-    status: 'ok',
-    codes: { total: totalCodes, used: usedCodes, available: totalCodes - usedCodes },
-    disbursed: { mor: total.mor, eth: total.eth },
-    budget: { maxMor: MAX_TOTAL_MOR, maxEth: MAX_TOTAL_ETH }
+async function initDb() {
+  db = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false
   });
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS codes (
+      code TEXT PRIMARY KEY,
+      used BOOLEAN NOT NULL DEFAULT false,
+      used_by TEXT,
+      used_at TIMESTAMPTZ,
+      status TEXT DEFAULT 'available',
+      eth_tx TEXT,
+      mor_tx TEXT,
+      error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
+
+// --- Routes ---
+
+app.get('/health', async (req, res) => {
+  try {
+    const { rows: [stats] } = await db.query(`
+      SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE used) AS used,
+        COUNT(*) FILTER (WHERE NOT used) AS available
+      FROM codes
+    `);
+    const disbursed = {
+      mor: parseInt(stats.used) * parseFloat(MOR_AMOUNT),
+      eth: parseInt(stats.used) * parseFloat(ETH_AMOUNT)
+    };
+    res.json({
+      status: 'ok',
+      codes: { total: parseInt(stats.total), used: parseInt(stats.used), available: parseInt(stats.available) },
+      disbursed,
+      budget: { maxMor: MAX_TOTAL_MOR, maxEth: MAX_TOTAL_ETH }
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: 'Database unavailable' });
+  }
 });
 
 app.post('/fund', async (req, res) => {
   const { code, address } = req.body;
 
-  // Validate inputs
   if (!code || !address) {
     return res.status(400).json({ error: 'Missing code or address' });
   }
@@ -82,37 +94,38 @@ app.post('/fund', async (req, res) => {
   }
   ipTimestamps.set(ip, Date.now());
 
-  // Check code
-  const codes = loadCodes();
-  const entry = codes[code];
-
-  if (!entry) {
-    return res.status(403).json({ error: 'Invalid invite code' });
-  }
-
-  if (entry.used) {
-    return res.status(403).json({ error: 'Invite code already used' });
-  }
-
-  // Concurrency lock
-  if (pendingCodes.has(code)) {
-    return res.status(409).json({ error: 'Code redemption in progress' });
-  }
-  pendingCodes.add(code);
-
   try {
+    // Atomic claim: mark code as used only if it exists and is unused
+    const { rows } = await db.query(
+      `UPDATE codes SET used = true, used_by = $1, used_at = NOW(), status = 'in-flight'
+       WHERE code = $2 AND used = false
+       RETURNING *`,
+      [address, code]
+    );
+
+    if (rows.length === 0) {
+      // Check if code exists at all
+      const { rows: existing } = await db.query('SELECT used FROM codes WHERE code = $1', [code]);
+      if (existing.length === 0) {
+        return res.status(403).json({ error: 'Invalid invite code' });
+      }
+      return res.status(403).json({ error: 'Invite code already used' });
+    }
+
     // Check budget cap
-    const total = getTotalDisbursed(codes);
-    if (total.mor + parseFloat(MOR_AMOUNT) > MAX_TOTAL_MOR) {
+    const { rows: [stats] } = await db.query(
+      `SELECT COUNT(*) AS used FROM codes WHERE used = true`
+    );
+    const totalUsed = parseInt(stats.used);
+    if (totalUsed * parseFloat(MOR_AMOUNT) > MAX_TOTAL_MOR) {
+      // Rollback the claim
+      await db.query(`UPDATE codes SET used = false, used_by = NULL, used_at = NULL, status = 'available' WHERE code = $1`, [code]);
       return res.status(503).json({ error: 'Faucet MOR budget depleted' });
     }
-    if (total.eth + parseFloat(ETH_AMOUNT) > MAX_TOTAL_ETH) {
+    if (totalUsed * parseFloat(ETH_AMOUNT) > MAX_TOTAL_ETH) {
+      await db.query(`UPDATE codes SET used = false, used_by = NULL, used_at = NULL, status = 'available' WHERE code = $1`, [code]);
       return res.status(503).json({ error: 'Faucet ETH budget depleted' });
     }
-
-    // Mark code as in-flight before sending transactions
-    codes[code] = { used: true, usedBy: address, usedAt: new Date().toISOString(), status: 'in-flight' };
-    saveCodes(codes);
 
     // Send ETH
     const ethTx = await wallet.sendTransaction({
@@ -126,11 +139,11 @@ app.post('/fund', async (req, res) => {
       ethers.parseUnits(MOR_AMOUNT, 18)
     );
 
-    // Mark code as completed with tx hashes
-    codes[code].ethTx = ethTx.hash;
-    codes[code].morTx = morTx.hash;
-    codes[code].status = 'completed';
-    saveCodes(codes);
+    // Mark completed
+    await db.query(
+      `UPDATE codes SET status = 'completed', eth_tx = $1, mor_tx = $2 WHERE code = $3`,
+      [ethTx.hash, morTx.hash, code]
+    );
 
     console.log(`Funded ${address} via code ${code}: ETH=${ethTx.hash} MOR=${morTx.hash}`);
 
@@ -143,14 +156,16 @@ app.post('/fund', async (req, res) => {
     });
   } catch (err) {
     console.error(`Fund error for ${address}:`, err.message);
-    codes[code].status = 'failed';
-    codes[code].error = err.message.slice(0, 200);
-    saveCodes(codes);
-    res.status(500).json({ error: 'Transaction failed: ' + err.message });
-  } finally {
-    pendingCodes.delete(code);
+    // Mark failed but keep used=true so code can't be reused
+    await db.query(
+      `UPDATE codes SET status = 'failed', error = $1 WHERE code = $2`,
+      [err.message.slice(0, 500), code]
+    ).catch(() => {});
+    res.status(500).json({ error: 'Transaction failed' });
   }
 });
+
+// --- Startup ---
 
 async function start() {
   if (!process.env.FAUCET_PRIVATE_KEY) {
@@ -162,6 +177,14 @@ async function start() {
     console.error('RPC_URL not set');
     process.exit(1);
   }
+
+  if (!process.env.DATABASE_URL) {
+    console.error('DATABASE_URL not set');
+    process.exit(1);
+  }
+
+  await initDb();
+  console.log('[OK] Database connected');
 
   provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
   wallet = new ethers.Wallet(process.env.FAUCET_PRIVATE_KEY, provider);
@@ -176,9 +199,10 @@ async function start() {
   console.log(`Per invite: ${MOR_AMOUNT} MOR + ${ETH_AMOUNT} ETH`);
   console.log(`Budget cap: ${MAX_TOTAL_MOR} MOR / ${MAX_TOTAL_ETH} ETH`);
 
-  const codes = loadCodes();
-  const available = Object.values(codes).filter(c => !c.used).length;
-  console.log(`Invite codes: ${available} available`);
+  const { rows: [stats] } = await db.query(
+    `SELECT COUNT(*) FILTER (WHERE NOT used) AS available, COUNT(*) AS total FROM codes`
+  );
+  console.log(`Invite codes: ${stats.available} available / ${stats.total} total`);
 
   app.listen(PORT, () => {
     console.log(`Faucet running on port ${PORT}`);
