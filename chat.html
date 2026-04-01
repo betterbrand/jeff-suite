@@ -737,6 +737,14 @@
     <div id="setup-sub">Decentralized AI Inference</div>
     <p id="setup-status">Connecting...</p>
     <select id="model-select" class="hidden"></select>
+    <div id="setup-wallet-info" class="hidden" style="margin: 12px 0; text-align: left; font-size: 12px; color: var(--text-dim); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+        <span>Your wallet</span>
+        <span id="setup-eth-bal" style="font-weight: 500;"></span>
+      </div>
+      <div id="setup-wallet-addr" style="font-family: 'SF Mono', monospace; font-size: 11px; word-break: break-all; margin-bottom: 8px;"></div>
+      <div style="font-size: 11px; color: var(--text-light);">Each model switch uses a small amount of ETH for gas. Send ETH on BASE to this address if you run out.</div>
+    </div>
     <button id="connect-btn" class="hidden" onclick="openSession()">Open Session</button>
   </div>
 </div>
@@ -1103,6 +1111,22 @@ async function init() {
     status.textContent = 'Choose a model to get started.';
     select.classList.remove('hidden');
     document.getElementById('connect-btn').classList.remove('hidden');
+
+    // Show wallet info on setup screen
+    try {
+      const [walletData, balanceData] = await Promise.all([
+        apiFetch('/wallet'),
+        apiFetch('/blockchain/balance')
+      ]);
+      const addr = walletData.address || '';
+      const ethBal = (Number(balanceData.eth || 0) / 1e18).toFixed(6);
+      document.getElementById('setup-wallet-addr').textContent = addr;
+      document.getElementById('setup-eth-bal').textContent = ethBal + ' ETH';
+      if (Number(balanceData.eth || 0) / 1e18 < 0.0001) {
+        document.getElementById('setup-eth-bal').style.color = 'var(--red, #c44)';
+      }
+      document.getElementById('setup-wallet-info').classList.remove('hidden');
+    } catch {}
   } catch (e) {
     status.textContent = 'Waiting for proxy-router...';
     setTimeout(init, 3000);

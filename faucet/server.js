@@ -11,9 +11,9 @@ app.use(express.json());
 const PORT = process.env.PORT || 3456;
 const MOR_TOKEN = process.env.MOR_TOKEN || '0x7431aDa8a591C955a994a21710752EF9b882b8e3';
 const MOR_AMOUNT = process.env.MOR_AMOUNT || '3';
-const ETH_AMOUNT = process.env.ETH_AMOUNT || '0.00005';
+const ETH_AMOUNT = process.env.ETH_AMOUNT || '0.005';
 const MAX_TOTAL_MOR = parseFloat(process.env.MAX_TOTAL_MOR || '300');
-const MAX_TOTAL_ETH = parseFloat(process.env.MAX_TOTAL_ETH || '0.005');
+const MAX_TOTAL_ETH = parseFloat(process.env.MAX_TOTAL_ETH || '0.5');
 
 const ERC20_ABI = [
   'function transfer(address to, uint256 amount) returns (bool)',
