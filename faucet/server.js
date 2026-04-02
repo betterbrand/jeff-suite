@@ -6,7 +6,7 @@ const { Pool } = require('pg');
 
 const app = express();
 app.set('trust proxy', 1);
-app.use(cors({ origin: false }));  // No CORS — admin.html runs from file://, /fund is called from curl
+app.use(cors({ origin: 'null' }));  // Allow file:// origin (browsers send Origin: null for file://)
 app.use(express.json({ limit: '10kb' }));
 
 const PORT = process.env.PORT || 3456;
