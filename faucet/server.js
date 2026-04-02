@@ -5,8 +5,9 @@ const { ethers } = require('ethers');
 const { Pool } = require('pg');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.set('trust proxy', 1);
+app.use(cors({ origin: false }));  // No CORS — admin.html runs from file://, /fund is called from curl
+app.use(express.json({ limit: '10kb' }));
 
 const PORT = process.env.PORT || 3456;
 const MOR_TOKEN = process.env.MOR_TOKEN || '0x7431aDa8a591C955a994a21710752EF9b882b8e3';
@@ -71,13 +72,18 @@ async function initDb() {
     )
   `);
 
-  // Migration for existing tables
+  // Migrations for existing tables
   await db.query(`ALTER TABLE codes ADD COLUMN IF NOT EXISTS assigned_to TEXT`);
+  await db.query(`ALTER TABLE codes ADD COLUMN IF NOT EXISTS redeemed_ip_hash TEXT`);
 }
 
 // --- Routes ---
 
-app.get('/health', async (req, res) => {
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+app.get('/admin/stats', requireAdmin, async (req, res) => {
   try {
     const { rows: [stats] } = await db.query(`
       SELECT
@@ -91,13 +97,12 @@ app.get('/health', async (req, res) => {
       eth: parseInt(stats.used) * parseFloat(ETH_AMOUNT)
     };
     res.json({
-      status: 'ok',
       codes: { total: parseInt(stats.total), used: parseInt(stats.used), available: parseInt(stats.available) },
       disbursed,
       budget: { maxMor: MAX_TOTAL_MOR, maxEth: MAX_TOTAL_ETH }
     });
   } catch (err) {
-    res.status(500).json({ status: 'error', error: 'Database unavailable' });
+    res.status(500).json({ error: 'Database unavailable' });
   }
 });
 
@@ -160,6 +165,7 @@ app.post('/admin/generate', requireAdmin, async (req, res) => {
 app.post('/admin/assign', requireAdmin, async (req, res) => {
   const { code, name } = req.body;
   if (!code) return res.status(400).json({ error: 'Missing code' });
+  if (name && name.length > 100) return res.status(400).json({ error: 'Name too long' });
   try {
     const { rowCount } = await db.query(
       'UPDATE codes SET assigned_to = $1 WHERE code = $2',
@@ -186,7 +192,7 @@ app.post('/fund', async (req, res) => {
   }
 
   // Rate limit by IP
-  const ip = req.socket.remoteAddress;
+  const ip = req.ip;
   const lastRequest = ipTimestamps.get(ip);
   if (lastRequest && Date.now() - lastRequest < RATE_LIMIT_MS) {
     return res.status(429).json({ error: 'Rate limited. Try again in a minute.' });
@@ -194,12 +200,15 @@ app.post('/fund', async (req, res) => {
   ipTimestamps.set(ip, Date.now());
 
   try {
+    // Hash the IP for privacy (store hash, not raw IP)
+    const ipHash = crypto.createHash('sha256').update(ip || 'unknown').digest('hex').slice(0, 16);
+
     // Atomic claim: mark code as used only if it exists and is unused
     const { rows } = await db.query(
-      `UPDATE codes SET used = true, used_by = $1, used_at = NOW(), status = 'in-flight'
+      `UPDATE codes SET used = true, used_by = $1, used_at = NOW(), status = 'in-flight', redeemed_ip_hash = $3
        WHERE code = $2 AND used = false
        RETURNING *`,
-      [address, code]
+      [address, code, ipHash]
     );
 
     if (rows.length === 0) {

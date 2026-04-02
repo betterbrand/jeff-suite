@@ -540,7 +540,7 @@ async function saveSecret() {
 async function loadDashboard() {
   try {
     const [health, codesData] = await Promise.all([
-      fetch(API + '/health').then(r => r.json()),
+      adminFetch('/admin/stats'),
       adminFetch('/admin/codes')
     ]);
 
@@ -583,70 +583,155 @@ function renderCodes() {
   const used = allCodes.filter(c => c.used);
 
   const availEl = document.getElementById('available-list');
+  availEl.innerHTML = '';
   if (available.length === 0) {
     availEl.innerHTML = '<div class="empty">No available codes. Generate some above.</div>';
   } else {
-    availEl.innerHTML = available.map(c => {
-      const name = c.assigned_to ? esc(c.assigned_to) : '';
-      const codeId = 'assign-' + esc(c.code);
-      return `
-      <div class="code-row" style="gap:6px; flex-wrap:wrap;">
-        <div style="flex:1; min-width:0;">
-          <span class="code-text">${esc(c.code)}</span>
-          ${name ? '<span style="font-size:12px; color:var(--accent); margin-left:8px;">' + name + '</span>' : ''}
-          <div id="${codeId}" style="display:none; margin-top:6px;">
-            <div style="display:flex; gap:4px;">
-              <input type="text" placeholder="Assign to..." value="${name}" style="flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:4px; font-family:inherit; font-size:12px; outline:none;" onkeydown="if(event.key==='Enter')assignCode('${esc(c.code)}',this.value)">
-              <button class="btn btn-outline btn-small" onclick="assignCode('${esc(c.code)}',this.previousElementSibling.value)">Save</button>
-            </div>
-          </div>
-        </div>
-        <button class="btn btn-copy" onclick="toggleAssign('${codeId}')" title="Assign name">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
-        </button>
-        <button class="btn btn-copy" onclick="shareInvite('${esc(c.code)}', this)" title="Share invite">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V13a1 1 0 001 1h6a1 1 0 001-1V8"/><polyline points="11 4 8 1 5 4"/><line x1="8" y1="1" x2="8" y2="10"/></svg>
-        </button>
-        <button class="btn btn-copy" onclick="copyCurl('${esc(c.code)}', this)" title="Copy install command">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="5 3 1 8 5 13"/><line x1="1" y1="8" x2="15" y2="8"/></svg>
-        </button>
-      </div>`;
-    }).join('');
+    available.forEach(c => {
+      const row = document.createElement('div');
+      row.className = 'code-row';
+      row.style.cssText = 'gap:6px; flex-wrap:wrap;';
+
+      const left = document.createElement('div');
+      left.style.cssText = 'flex:1; min-width:0;';
+
+      const codeSpan = document.createElement('span');
+      codeSpan.className = 'code-text';
+      codeSpan.textContent = c.code;
+      left.appendChild(codeSpan);
+
+      if (c.assigned_to) {
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = 'font-size:12px; color:var(--accent); margin-left:8px;';
+        nameSpan.textContent = c.assigned_to;
+        left.appendChild(nameSpan);
+      }
+
+      // Assign input (hidden by default)
+      const assignDiv = document.createElement('div');
+      assignDiv.style.cssText = 'display:none; margin-top:6px;';
+      const assignRow = document.createElement('div');
+      assignRow.style.cssText = 'display:flex; gap:4px;';
+      const assignInput = document.createElement('input');
+      assignInput.type = 'text';
+      assignInput.placeholder = 'Assign to...';
+      assignInput.value = c.assigned_to || '';
+      assignInput.style.cssText = 'flex:1; padding:6px 10px; border:1px solid var(--border); border-radius:4px; font-family:inherit; font-size:12px; outline:none;';
+      assignInput.addEventListener('keydown', e => { if (e.key === 'Enter') assignCode(c.code, assignInput.value); });
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'btn btn-outline btn-small';
+      saveBtn.textContent = 'Save';
+      saveBtn.addEventListener('click', () => assignCode(c.code, assignInput.value));
+      assignRow.appendChild(assignInput);
+      assignRow.appendChild(saveBtn);
+      assignDiv.appendChild(assignRow);
+      left.appendChild(assignDiv);
+
+      row.appendChild(left);
+
+      // Assign button
+      const assignBtn = document.createElement('button');
+      assignBtn.className = 'btn btn-copy';
+      assignBtn.title = 'Assign name';
+      assignBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>';
+      assignBtn.addEventListener('click', () => {
+        assignDiv.style.display = assignDiv.style.display === 'none' ? 'block' : 'none';
+        if (assignDiv.style.display === 'block') assignInput.focus();
+      });
+      row.appendChild(assignBtn);
+
+      // Share button
+      const shareBtn = document.createElement('button');
+      shareBtn.className = 'btn btn-copy';
+      shareBtn.title = 'Share invite';
+      shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V13a1 1 0 001 1h6a1 1 0 001-1V8"/><polyline points="11 4 8 1 5 4"/><line x1="8" y1="1" x2="8" y2="10"/></svg>';
+      shareBtn.addEventListener('click', () => shareInvite(c.code, shareBtn));
+      row.appendChild(shareBtn);
+
+      // Copy curl button
+      const curlBtn = document.createElement('button');
+      curlBtn.className = 'btn btn-copy';
+      curlBtn.title = 'Copy install command';
+      curlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="5 3 1 8 5 13"/><line x1="1" y1="8" x2="15" y2="8"/></svg>';
+      curlBtn.addEventListener('click', () => copyCurl(c.code, curlBtn));
+      row.appendChild(curlBtn);
+
+      availEl.appendChild(row);
+    });
   }
 
   const usedEl = document.getElementById('used-list');
+  usedEl.innerHTML = '';
   if (used.length === 0) {
     usedEl.innerHTML = '<div class="empty">No codes used yet.</div>';
   } else {
-    usedEl.innerHTML = used.map(c => {
-      const addr = c.used_by ? esc(c.used_by) : '';
+    const basescan = 'https://basescan.org/tx/';
+    used.forEach(c => {
+      const row = document.createElement('div');
+      row.className = 'code-row';
+      row.style.cssText = 'flex-wrap:wrap;';
+
+      const left = document.createElement('div');
+      left.style.cssText = 'flex:1; min-width:0;';
+
+      const codeSpan = document.createElement('span');
+      codeSpan.className = 'code-text';
+      codeSpan.style.fontSize = '13px';
+      codeSpan.textContent = c.code;
+      left.appendChild(codeSpan);
+
+      if (c.assigned_to) {
+        const nameSpan = document.createElement('span');
+        nameSpan.style.cssText = 'color:var(--accent); font-size:12px; margin-left:6px;';
+        nameSpan.textContent = c.assigned_to;
+        left.appendChild(nameSpan);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'code-meta';
       const addrShort = c.used_by ? c.used_by.slice(0, 6) + '...' + c.used_by.slice(-4) : '';
       const time = c.used_at ? new Date(c.used_at).toLocaleString() : '';
-      const status = c.status || 'completed';
-      const basescan = 'https://basescan.org/tx/';
+      meta.textContent = addrShort + ' \u00b7 ' + time;
+      left.appendChild(meta);
 
-      let extra = '';
       if (c.eth_tx || c.mor_tx) {
-        extra += '<div class="tx-links">';
-        if (c.eth_tx) extra += 'ETH: <a href="' + basescan + esc(c.eth_tx) + '" target="_blank">' + esc(c.eth_tx.slice(0, 14)) + '...</a> ';
-        if (c.mor_tx) extra += 'MOR: <a href="' + basescan + esc(c.mor_tx) + '" target="_blank">' + esc(c.mor_tx.slice(0, 14)) + '...</a>';
-        extra += '</div>';
+        const txDiv = document.createElement('div');
+        txDiv.className = 'tx-links';
+        if (c.eth_tx) {
+          const ethLink = document.createElement('a');
+          ethLink.href = basescan + c.eth_tx;
+          ethLink.target = '_blank';
+          ethLink.textContent = 'ETH: ' + c.eth_tx.slice(0, 14) + '...';
+          txDiv.appendChild(ethLink);
+          txDiv.appendChild(document.createTextNode(' '));
+        }
+        if (c.mor_tx) {
+          const morLink = document.createElement('a');
+          morLink.href = basescan + c.mor_tx;
+          morLink.target = '_blank';
+          morLink.textContent = 'MOR: ' + c.mor_tx.slice(0, 14) + '...';
+          txDiv.appendChild(morLink);
+        }
+        left.appendChild(txDiv);
       }
+
       if (c.error) {
-        extra += '<div class="error-detail">' + esc(c.error) + '</div>';
+        const errDiv = document.createElement('div');
+        errDiv.className = 'error-detail';
+        errDiv.textContent = c.error;
+        left.appendChild(errDiv);
       }
 
-      const assignedName = c.assigned_to ? '<span style="color:var(--accent); font-size:12px; margin-left:6px;">' + esc(c.assigned_to) + '</span>' : '';
+      row.appendChild(left);
 
-      return '<div class="code-row" style="flex-wrap:wrap;">' +
-        '<div style="flex:1; min-width:0;">' +
-          '<span class="code-text" style="font-size:13px;">' + esc(c.code) + '</span>' + assignedName +
-          '<div class="code-meta">' + addrShort + ' \u00b7 ' + time + '</div>' +
-          extra +
-        '</div>' +
-        '<span class="code-status ' + status + '">' + status + '</span>' +
-      '</div>';
-    }).join('');
+      const statusBadge = document.createElement('span');
+      const status = c.status || 'completed';
+      statusBadge.className = 'code-status ' + status;
+      statusBadge.textContent = status;
+      row.appendChild(statusBadge);
+
+      usedEl.appendChild(row);
+    });
   }
 }
 

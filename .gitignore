@@ -1,8 +1,14 @@
+# Secrets
 .env
+*.env
+faucet/.env
+
+# Data
 data/
 .cookie
-.DS_Store
-MorpheusUI.dmg
-faucet/.env
 faucet/codes.json
 faucet/node_modules/
+
+# OS
+.DS_Store
+MorpheusUI.dmg
