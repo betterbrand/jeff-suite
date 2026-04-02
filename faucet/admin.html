@@ -483,15 +483,15 @@ let adminSecret = '';
 let allCodes = [];
 
 function getSecret() {
-  try { return localStorage.getItem('faucetAdminSecret') || ''; } catch { return ''; }
+  try { return sessionStorage.getItem('faucetAdminSecret') || ''; } catch { return ''; }
 }
 
 function setSecret(s) {
-  try { localStorage.setItem('faucetAdminSecret', s); } catch {}
+  try { sessionStorage.setItem('faucetAdminSecret', s); } catch {}
 }
 
 function clearSecret() {
-  try { localStorage.removeItem('faucetAdminSecret'); } catch {}
+  try { sessionStorage.removeItem('faucetAdminSecret'); } catch {}
   adminSecret = '';
   document.getElementById('dashboard').classList.add('hidden');
   document.getElementById('setup').classList.remove('hidden');
@@ -831,9 +831,15 @@ async function generateCodes() {
     const resultEl = document.getElementById('gen-result');
     const codesEl = document.getElementById('gen-codes');
     resultEl.classList.remove('hidden');
-    codesEl.innerHTML = data.generated.map(c =>
-      '<span style="cursor:pointer;" onclick="copyCode(\'' + esc(c) + '\')">' + esc(c) + '</span>'
-    ).join('<br>');
+    codesEl.innerHTML = '';
+    data.generated.forEach(c => {
+      const span = document.createElement('span');
+      span.style.cursor = 'pointer';
+      span.textContent = c;
+      span.addEventListener('click', () => copyCode(c));
+      codesEl.appendChild(span);
+      codesEl.appendChild(document.createElement('br'));
+    });
 
     toast('Generated ' + data.generated.length + ' codes');
     loadDashboard();
